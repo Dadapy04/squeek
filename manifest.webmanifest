@@ -1,0 +1,9 @@
+{
+  "name": "Squeek: Extraction Survival",
+  "short_name": "Squeek",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0c0f13",
+  "theme_color": "#1a140f"
+}

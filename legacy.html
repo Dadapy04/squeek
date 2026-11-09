@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#140e0c" />
+    <title>NPCS cadangan: Extraction</title>
+    <script type="module" crossorigin src="./assets/legacy-Dd6r3Y7b.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
+    <link rel="modulepreload" crossorigin href="./assets/three.module-Y2OibVvR.js">
+    <link rel="stylesheet" crossorigin href="./assets/legacy-kOAvuxos.css">
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="field" width="390" height="844" aria-label="Galian NPCS, tampak atas"></canvas>
+      <canvas id="gl" hidden aria-label="Galian NPCS, orang ketiga"></canvas>
+      <div id="glNote" class="gl-note" hidden>
+        <p id="glNoteText">Menyiapkan galian…</p>
+        <button id="glMap" type="button" hidden>Peta atas</button>
+      </div>
+      <div id="crosshair" hidden></div>
+      <div id="floaters" hidden></div>
+      <header class="hud">
+        <div class="hud-top">
+          <div>
+            <p class="eyebrow">Pos fiksi · Sepolia · bukan uang, bukan NFT</p>
+            <h1>NPCS cadangan: Extraction</h1>
+          </div>
+          <button id="btnPause" type="button" class="pill" aria-pressed="false">Jeda</button>
+          <button id="tuneBtn" type="button" class="pill" aria-expanded="false">Atur</button>
+          <button id="viewBtn" type="button" class="pill" aria-pressed="true">Atas</button>
+          <button id="muteBtn" type="button" class="pill" aria-pressed="false">Suara</button>
+          <button id="linkPill" type="button" class="pill" aria-expanded="false">MENUNGGU</button>
+        </div>
+        <p id="demoBanner" class="demo" hidden>MODE DEMO — bukan telemetry live.</p>
+        <div class="bars">
+          <label>Nyawa <span id="hpText">150</span><span class="track"><span id="hpFill"></span></span></label>
+          <label>Napas <span id="stamText">100</span><span class="track"><span id="stamFill"></span></span></label>
+          <label>Muatan <span id="bonusText">0</span><span class="track"><span id="bonusFill"></span></span></label>
+        </div>
+        <div class="row">
+          <p id="bagText">Tas 0/5</p>
+          <p id="zoneText">Pangkalan</p>
+          <p id="bankText" data-bank-scrap="0" data-bank-gear="0" data-bank-core="0">Simpanan 0</p>
+          <p id="arrowWrap" class="arrow-wrap"><span id="arrow" aria-hidden="true">▲</span> pangkalan</p>
+          <p id="ammoText" hidden>Pedang</p>
+        </div>
+        <p id="eventLine">Ketuk Pedang untuk kombo. Tahan untuk tebasan berat.</p>
+        <div id="telePop" class="pop" hidden>
+          <p id="teleLine">Napas pulih sendiri. Muatan roda hanya dari kerja baru.</p>
+          <p id="anchorLine">Anchor — · proyeksi —</p>
+          <div class="row">
+            <button id="demoToggle" type="button" aria-pressed="false">Demo telemetry</button>
+            <button id="refreshBtn" type="button">Muat roda</button>
+          </div>
+          <p id="extraReadout"></p>
+        </div>
+      </header>
+
+      <aside id="coach">
+        <p>Geser layar untuk kamera. Tembak, Bidik, Isi. Ganti termasuk pedang. Atas kembali ke peta.</p>
+        <button id="coachOk" type="button">Mengerti</button>
+      </aside>
+
+      <section id="tune" class="panel tune" hidden>
+        <h2>Pandangan</h2>
+        <label>Kepekaan <input id="sens" type="range" min="0.6" max="1.6" step="0.05" value="1" /></label>
+        <label>Sudut <input id="fov" type="range" min="50" max="75" step="1" value="62" /></label>
+        <label>Volume <input id="vol" type="range" min="0" max="1" step="0.05" value="0.55" /></label>
+        <label>Gambar <select id="quality"><option value="med">Biasa</option><option value="low">Ringan</option></select></label>
+        <label>Tongkat <select id="hand"><option value="left">Kiri</option><option value="right">Kanan</option></select></label>
+        <button id="tuneClose" type="button">Tutup</button>
+      </section>
+
+      <section id="bagPanel" class="panel" hidden>
+        <h2>Tas</h2>
+        <ul id="bagList"></ul>
+        <p>Di jalan, pakai isi tas. Di pangkalan, perban dan tonik berkurang dari simpanan.</p>
+        <button id="useBandage" type="button">Pakai perban</button>
+        <button id="useTonic" type="button">Pakai tonik</button>
+        <button id="bagClose" type="button">Tutup</button>
+      </section>
+
+      <section id="shop" class="panel" hidden>
+        <h2>Bengkel pangkalan</h2>
+        <p>Beli dengan simpanan. Satu jalan tidak cukup untuk semuanya.</p>
+        <button id="buyDamage" type="button">Daya</button>
+        <button id="buyBag" type="button">Tas</button>
+        <button id="buyVitality" type="button">Badan</button>
+        <button id="shopClose" type="button">Tutup</button>
+      </section>
+
+      <section id="pause" class="panel" hidden>
+        <h2>Jeda</h2>
+        <p>Gerak, tembakan, isi, dan hindar berhenti. Atur tetap bisa dibuka.</p>
+        <button id="pauseResume" type="button">Lanjut</button>
+      </section>
+
+      <section id="result" class="panel" hidden>
+        <h2 id="resultTitle">Selesai</h2>
+        <p id="resultBody"></p>
+        <button id="resultAgain" type="button">Jalan lagi</button>
+      </section>
+
+      <div id="controls" class="controls">
+        <div id="stick" class="stick" role="slider" aria-label="Tongkat gerak" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0">
+          <div id="knob"></div>
+        </div>
+        <div class="dock">
+          <div id="tactRow" class="tact-row">
+            <button id="btnAim" type="button">Bidik</button>
+            <button id="btnReload" type="button">Isi</button>
+            <button id="btnJump" type="button">Lompat</button>
+            <button id="btnCrouch" type="button">Jongkok</button>
+            <button id="btnSprint" type="button">Lari</button>
+            <button id="btnSwitch" type="button">Ganti</button>
+            <button id="btnInteract" type="button" hidden>Buka</button>
+            <button id="btnFireMode" type="button" hidden>Tembakan</button>
+          </div>
+          <div class="pad">
+            <button id="btnBag" type="button">Tas</button>
+            <button id="btnShop" type="button" hidden>Bengkel</button>
+            <button id="btnBoost" type="button">Pacu</button>
+            <button id="btnShield" type="button">Perisai</button>
+            <button id="btnDodge" type="button">Hindar<span id="dodgeCd" class="cd"></span></button>
+            <button id="btnAttack" type="button"><span id="attackLabel">Tembak</span><span id="attackCd" class="cd"></span></button>
+          </div>
+        </div>
+      </div>
+      <p id="bootError" role="alert"></p>
+    </div>
+  </body>
+</html>

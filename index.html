@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Squeek" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="theme-color" content="#1a140f" />
+    <title>Squeek: Extraction Survival</title>
+    <script type="module" crossorigin src="./assets/main-gf2ymrKi.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
+    <link rel="modulepreload" crossorigin href="./assets/wheel-BKW0ZpM6.js">
+    <link rel="stylesheet" crossorigin href="./assets/main-CDv40Oup.css">
+  </head>
+  <body data-drive="normal" class="title">
+    <div id="bootSplash" role="status">Squeek</div>
+    <section id="title">
+      <canvas id="titleView" data-i18n-aria="title.aria" aria-label="Squeek: Extraction Survival. Tap to start."></canvas>
+      <p id="titlePurse" class="purse title-purse"><i class="coin" aria-hidden="true"></i><b id="titlePurseNum">0</b></p>
+      <button id="titleFull" type="button" data-i18n="title.full">Full screen</button>
+      <div id="titleLang" class="lang-toggle" role="group">
+        <button type="button" data-set-lang="id">ID</button>
+        <span aria-hidden="true">|</span>
+        <button type="button" data-set-lang="en">EN</button>
+      </div>
+    </section>
+    <section id="base">
+      <div id="baseScroll">
+        <p class="eyebrow" data-i18n="base.eyebrow">Delve · local coin</p>
+        <div id="baseLang" class="lang-toggle" role="group">
+          <button type="button" data-set-lang="id">ID</button>
+          <span aria-hidden="true">|</span>
+          <button type="button" data-set-lang="en">EN</button>
+        </div>
+        <p id="stashTotal" class="stash-total"><span data-i18n="base.stashTotal">Stash value</span> <b id="stashTotalNum">0</b></p>
+        <p id="purse" class="purse"><i class="coin" aria-hidden="true"></i><b id="purseNum">0</b><span id="coinPop"></span></p>
+        <div id="loadout">
+          <div>
+            <div id="stash"></div>
+            <p id="carryHint" data-i18n="base.carryHint">Tap an item to inspect it. Take puts it in your loadout. Equip a spear from the detail panel.</p>
+          </div>
+          <div>
+            <h2 data-i18n="base.loadout">Loadout</h2>
+            <div id="tray"></div>
+          </div>
+        </div>
+      <p id="depthLabel" class="note">Every run starts at Depth 1. Deepest: 1.</p>
+      <div id="bladeRack" class="blade-rack"></div>
+        <h1 class="logo"><img src="./squeek-logo.svg" alt="Squeek: Extraction Survival" /></h1>
+        <details id="rules">
+          <summary data-i18n="base.rulesSummary">Delve rules</summary>
+          <p id="risk" data-i18n="base.rules">Gear you carry out of the stash is lost if you die before extracting.</p>
+        </details>
+        <section id="merchant" class="merchant">
+          <h2 data-i18n="merchant.title">Merchant</h2>
+          <p data-i18n="merchant.blurb">Bandages and medkits go to the stash. Buy price sits above sell value.</p>
+          <div class="row">
+            <button id="buyBandage" type="button" data-i18n="merchant.bandage">Bandage · 24 coin</button>
+            <button id="buyP3k" type="button" data-i18n="merchant.p3k">Medkit · 18 coin</button>
+            <button id="sellCommon" type="button" data-i18n="merchant.sellCommon">Sell all common</button>
+            <button id="bagUpgrade" type="button" data-i18n="merchant.bag">Widen bag</button>
+          </div>
+          <p id="merchantNote" class="note"></p>
+        </section>
+        <p class="row"><button id="openWorkshop" type="button" data-i18n="btn.workshop">Workshop</button></p>
+        <p id="deployError" class="note" hidden></p>
+        <p id="wheelBase" class="note" data-i18n="wheel.wait">Wheel: waiting for a reading. Reserves are a breather, not a prize.</p>
+        <nav class="row nav">
+          <a href="./arena.html" data-i18n="nav.arena">Wave arena</a>
+          <a href="./rpg.html" data-i18n="nav.rpg">RPG</a>
+          <a href="./legacy.html" data-i18n="nav.legacy">Old extraction</a>
+        </nav>
+      </div>
+      <div id="depart" class="row">
+        <button id="resume" type="button" hidden data-i18n="btn.resume">Resume delve</button>
+        <button id="deploy" class="primary" type="button" data-i18n="btn.deploy">Head out</button>
+      </div>
+    </section>
+    <div id="workshop" hidden>
+      <div id="workshopCard" class="modal-card">
+        <header class="modal-head">
+          <h2 data-i18n="shop.title">Workshop</h2>
+          <button id="workshopX" class="modal-x" type="button" data-i18n-aria="shop.close" aria-label="Close">✕</button>
+        </header>
+        <div class="modal-body">
+          <p id="workshopLead"></p>
+          <p id="workshopHome" data-i18n="shop.home">Materials have to be home in the stash.</p>
+          <h3 data-i18n="shop.repair">Repair</h3>
+          <p id="workshopState"><span class="ico" data-kind="shield" aria-hidden="true"></span><span id="workshopStateText" data-i18n="item.shield">Shield</span></p>
+          <p id="workshopStock"></p>
+          <div id="workshopActions"></div>
+          <h3 data-i18n="shop.upgrade">Upgrade</h3>
+          <div id="workshopUpgrades"></div>
+        </div>
+        <footer class="modal-foot">
+          <div id="workshopConfirm" hidden>
+            <p id="workshopAsk"></p>
+            <div class="row">
+              <button id="workshopYes" class="primary" type="button" data-i18n="shop.yesForge">Yes, forge</button>
+              <button id="workshopNo" type="button" data-i18n="shop.no">Cancel</button>
+            </div>
+          </div>
+          <p id="workshopNote" role="status"></p>
+          <button id="workshopClose" type="button" data-i18n="shop.close">Close</button>
+        </footer>
+      </div>
+    </div>
+    <section id="field" hidden>
+      <p id="rotateHint" data-i18n="rotate">Turn the phone sideways. Stash and the delve in progress stay as they are.</p>
+      <div id="bars">
+        <p class="hud hud-hp"><span class="ico heart" aria-hidden="true"></span><span class="track"><i id="hpFill"></i></span><span id="hpText">HP 100/100</span></p>
+        <p class="hud hud-stam"><span class="ico bolt" aria-hidden="true"></span><span class="track"><i id="stamFill"></i></span><span id="stamText">Stamina 100/100</span></p>
+        <p id="bagText">Carried 0/12</p>
+        <p id="swordDaya">Sword 24</p>
+        <p id="misi">Depth 1/7</p>
+        <p id="zoneText" hidden>Base</p>
+        <button id="gear" type="button" data-i18n="hud.settings" data-i18n-aria="hud.settings">Settings</button>
+      </div>
+      <p id="channel" hidden></p>
+      <div id="floorCue" hidden>
+        <div>
+          <p class="eyebrow" data-i18n="floor.kicker">Descending</p>
+          <h2 id="floorCueTitle">Depth 2/7</h2>
+          <p id="floorCueBody">A little health returns.</p>
+        </div>
+      </div>
+      <p id="banner" hidden></p>
+      <p id="bossBar" hidden><span id="bossName"></span> <span class="track"><i id="bossFill"></i></span> <span id="bossHp">0</span></p>
+      <p id="note" hidden></p>
+      <canvas id="minimap" width="124" height="148" data-i18n-aria="map.aria" aria-label="Delve map. Tap to enlarge."></canvas>
+      <div id="shortcuts">
+        <button id="openBag" type="button" data-i18n="hud.bagBtn">Bag</button>
+        <button id="openShop" type="button" data-i18n="btn.workshop">Workshop</button>
+        <button id="openHome" type="button" data-i18n="hud.home">Base</button>
+      </div>
+      <div id="moveZone" aria-hidden="true"></div>
+      <div id="stickCol"><div id="stick" data-i18n-aria="move.aria" aria-label="Move"><div id="knob"></div></div></div>
+      <div id="stage">
+        <canvas id="view" width="390" height="520" data-i18n-aria="view.aria" aria-label="Squeek delve, top-down"></canvas>
+      </div>
+      <div id="slots">
+        <button id="slotSword" class="slot on" type="button" data-i18n="hud.sword">Sword</button>
+        <button id="slotShield" class="slot" type="button" data-i18n="item.shield">Shield</button>
+        <button id="slotSoon" class="slot locked" type="button" data-i18n="hud.soon">Soon</button>
+        <button class="slot empty" type="button" disabled></button>
+        <button class="slot empty" type="button" disabled></button>
+      </div>
+      <div id="actions">
+          <button id="block" type="button" aria-pressed="false" data-i18n="hud.blockWord">Block</button>
+          <button id="open" type="button" hidden data-i18n="hud.open">Open</button>
+          <button id="claim" type="button" hidden>Take</button>
+          <button id="bagSwap" type="button" hidden data-i18n="hud.bagSwap">Open bag</button>
+          <button id="support" type="button" hidden>Hold</button>
+          <button id="dodge" type="button" data-i18n="hud.dodge">Dodge</button>
+          <button id="useItem" type="button"><span data-i18n="hud.item">Item</span> <b id="itemCount">0</b></button>
+          <button id="soul" type="button" hidden data-i18n="hud.soul">Soul</button>
+          <button id="attack" type="button" data-i18n="hud.sword">Sword</button>
+          <button id="useBandage" type="button" hidden>Bandage</button>
+          <button id="useTonic" type="button" hidden>Tonic</button>
+      </div>
+      <div id="settings" hidden>
+        <div id="settingsCard" class="modal-card">
+          <header class="modal-head">
+            <p data-i18n="settings.title">Settings</p>
+            <button id="settingsX" class="modal-x" type="button" data-i18n-aria="shop.close" aria-label="Close">✕</button>
+          </header>
+          <div class="modal-body">
+            <div id="settingsLang" class="lang-toggle" role="group">
+              <button type="button" data-set-lang="id">ID</button>
+              <span aria-hidden="true">|</span>
+              <button type="button" data-set-lang="en">EN</button>
+            </div>
+            <p class="tip" data-i18n="settings.tip">For a full screen on iPhone: Share → Add to Home Screen.</p>
+            <button id="fullToggle" type="button" data-i18n="title.full">Full screen</button>
+            <button id="surrender" class="danger" type="button" data-i18n="settings.giveUp">Give up</button>
+          </div>
+          <footer class="modal-foot">
+            <button id="settingsClose" type="button" data-i18n="shop.close">Close</button>
+          </footer>
+        </div>
+      </div>
+      <div id="overlay" hidden>
+        <div id="overlayCard" class="modal-card">
+          <header class="modal-head">
+            <h2 id="overlayTitle" data-i18n="bag.title">Bag</h2>
+            <button id="overlayX" class="modal-x" type="button" data-i18n-aria="shop.close" aria-label="Close">✕</button>
+          </header>
+          <div class="modal-body">
+            <div id="overlayBody"></div>
+          </div>
+          <footer class="modal-foot">
+            <div id="bagDetail" hidden>
+              <p id="bagDetailText"></p>
+              <div class="row">
+                <button id="bagDrop1" type="button" data-i18n="bag.drop1">Drop 1</button>
+                <button id="bagDropAll" type="button" data-i18n="bag.dropAll">Drop all</button>
+                <button id="bagUse" type="button" data-i18n="bag.use">Use</button>
+              </div>
+            </div>
+            <button id="overlayClose" type="button" data-i18n="bag.close">Close</button>
+          </footer>
+        </div>
+      </div>
+    </section>
+    <section id="result" hidden>
+      <div id="resultPanel">
+        <div id="resultSummary">
+          <p class="eyebrow" id="resultKind" data-i18n="result.done">Done</p>
+          <h1 id="resultTitle">Home</h1>
+          <p id="resultBody"></p>
+        </div>
+        <div id="resultLootCol">
+          <p id="resultHeading" data-i18n="result.loot">Haul</p>
+          <ul id="resultLoot"></ul>
+        </div>
+        <p id="resultValue"></p>
+        <button id="again" class="primary" type="button" data-i18n="result.again">Back to base</button>
+      </div>
+    </section>
+  </body>
+</html>
