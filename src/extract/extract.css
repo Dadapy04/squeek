@@ -454,6 +454,14 @@ button.danger { background: #6e2420; color: #fff6f2; border-color: #a14a42; }
   #slots { bottom: max(12px, var(--safe-b)); }
   #actions { right: max(16px, calc(10px + var(--safe-r))); }
 }
+@media (orientation: landscape) and (max-height: 420px) {
+  #minimap.big {
+    width: min(168px, 28vw);
+    height: min(150px, 38vh);
+    top: calc(36px + var(--safe-t));
+    left: max(8px, var(--safe-l));
+  }
+}
 @media (orientation: landscape) and (max-height: 360px) {
   #field { --map-w: 84px; --map-h: 68px; }
 }

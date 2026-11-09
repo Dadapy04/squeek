@@ -1,4 +1,4 @@
-import { shieldMaxFor, swordBonusPct, swordDamage, upgradeCost } from './economy.ts'
+import { shieldMaxFor, swordBonusPct, swordDamage, upgradeCost, upgradeOre } from './economy.ts'
 import { t } from './i18n.ts'
 import { addUnits, count, spendStack, type ExtractSave } from './sim.ts'
 
@@ -23,6 +23,7 @@ export interface UpgradeCard {
   now: string
   next: string
   cost: number | null
+  ore: number
   enabled: boolean
   reason: string
 }
@@ -105,15 +106,17 @@ function swordCard(save: ExtractSave, run: string): UpgradeCard {
   const level = save.swordLevel || 1
   const cost = upgradeCost(level)
   const now = t('shop.swordNow', { lv: level, dmg: swordDamage(level), pct: swordBonusPct(level) })
-  if (cost == null) return { which: 'sword', title: t('shop.upSword'), now, next: t('shop.maxLv'), cost: null, enabled: false, reason: t('shop.maxReason') }
+  if (cost == null) return { which: 'sword', title: t('shop.upSword'), now, next: t('shop.maxLv'), cost: null, ore: 0, enabled: false, reason: t('shop.maxReason') }
   const nextLv = level + 1
-  const reason = run || (save.coins < cost ? t('shop.poor') : '')
+  const ore = upgradeOre(level)
+  const reason = run || (ore > 0 && count(save.stash, 'ore') < ore ? t('shop.oreUp', { n: ore }) : save.coins < cost ? t('shop.poor') : '')
   return {
     which: 'sword',
     title: t('shop.upSword'),
     now,
     next: t('shop.swordNow', { lv: nextLv, dmg: swordDamage(nextLv), pct: swordBonusPct(nextLv) }),
     cost,
+    ore,
     enabled: reason === '',
     reason,
   }
@@ -123,15 +126,17 @@ function shieldCard(save: ExtractSave, run: string, cap: number): UpgradeCard {
   const level = save.shieldLevel || 1
   const cost = upgradeCost(level)
   const now = t('shop.shieldNow', { lv: level, cap })
-  if (cost == null) return { which: 'shield', title: t('shop.upShield'), now, next: t('shop.maxLv'), cost: null, enabled: false, reason: t('shop.maxReason') }
+  if (cost == null) return { which: 'shield', title: t('shop.upShield'), now, next: t('shop.maxLv'), cost: null, ore: 0, enabled: false, reason: t('shop.maxReason') }
   const nextLv = level + 1
-  const reason = run || (save.coins < cost ? t('shop.poor') : '')
+  const ore = upgradeOre(level)
+  const reason = run || (ore > 0 && count(save.stash, 'ore') < ore ? t('shop.oreUp', { n: ore }) : save.coins < cost ? t('shop.poor') : '')
   return {
     which: 'shield',
     title: t('shop.upShield'),
     now,
     next: t('shop.shieldNext', { lv: nextLv, cap: shieldMaxFor(nextLv) }),
     cost,
+    ore,
     enabled: reason === '',
     reason,
   }

@@ -34,6 +34,13 @@ export function upgradeCost(level: number): number | null {
   return UPGRADE_COSTS[lv - 1] ?? null
 }
 
+/** Extra stash ore for upgrades past the first. Level 1 stays coin-only so a fresh sword can still be raised. */
+export function upgradeOre(level: number): number {
+  const lv = clampLevel(level)
+  if (lv <= 1 || lv >= UPGRADE_CAP) return 0
+  return lv - 1
+}
+
 /** +8% of the base 24 for each level past 1, cumulative, rounded to the nearest hit. */
 export function swordDamage(level: number): number {
   const lv = clampLevel(level)

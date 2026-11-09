@@ -1,8 +1,9 @@
 import { coinsFor, hashText, mintUnit, mixSeed, readUnit, type CoinRarity, type ItemOrigin, type ItemUnit } from './coins.ts'
 import { t, type MsgKey } from './i18n.ts'
 import { BOSS_RAGE_SEC, DEPTH_CAP, DEPTHS, bladeDisplay, bossChip, bossDisplay, bossPattern, bossPhaseOf, depthPlan, foeChip, frontGuarded, GUARD_FACTOR, makeBlade, rageMul, recommendDamage, type Blade, type Breed } from './depths.ts'
-import { bagSlotsOf, blockArc, MERCHANT, nextBagUpgrade, shieldMaxFor, swordBonusPct, swordDamage, upgradeCost, type MerchantKind } from './economy.ts'
+import { bagSlotsOf, blockArc, MERCHANT, nextBagUpgrade, shieldMaxFor, swordBonusPct, swordDamage, upgradeCost, upgradeOre, type MerchantKind } from './economy.ts'
 import { SPEAR_ACTIVE, SPEAR_ARC, SPEAR_TOTAL, SPEAR_WIND, critLands, rollSpear, spearBossBonus, spearPower, spearReach, type Spear } from './spear.ts'
+import { doorPad, generateFloor, layoutShift, nearPad, oreValue, roomAt, spineRoom, type FloorChart, type PropNode, type RoomNode, type SpawnNode, type VeinNode } from './dungeon.ts'
 
 /** Pixel extraction run. Local item counts only. Not SQK, not a wave arena. */
 
@@ -50,7 +51,7 @@ export function refreshBanner(run: Run): void {
 export const BLOCK_ARC = 1.05
 export const IDLE_AIM = -Math.PI / 2
 
-export type ZoneId = 'pangkalan' | 'tambang' | 'reruntuhan' | 'sarang'
+export type ZoneId = 'pangkalan' | 'tambang' | 'reruntuhan' | 'sarang' | 'kamar'
 export type ItemKind = 'sword' | 'bandage' | 'tonic' | 'scrap' | 'ore' | 'relic' | 'shard' | 'tombak' | 'bilah' | 'p3k'
 export type FoeKind = 'crab' | 'spitter' | 'brute' | 'lurker' | 'boss' | 'moth' | 'burrow' | 'spore' | 'beetle' | 'jelly' | 'swarm' | 'mole' | 'web' | 'ember' | 'leech' | 'bomber' | 'wisp' | 'crusher'
 
@@ -151,6 +152,15 @@ export interface Run {
   soul?: SoulRite
   /** Short message across the top of the run. Not stored. */
   banner?: { text: string; life: number; tone?: 'weak'; key?: MsgKey; vars?: Record<string, string | number> }
+  /** Seeded floor graph. Missing on old saves until the run is loaded. */
+  chart?: FloorChart
+  roomId?: string
+  seenRooms?: string[]
+  flags?: string[]
+  keys?: number
+  roomClock?: number
+  /** 1 while the current room event is darkness. Not stored. */
+  gloom?: number
 }
 
 export interface ExtractSave {
@@ -234,6 +244,11 @@ export interface Foe {
   fought?: number
   /** Armor glance sparks. */
   glance?: number
+  /** Annex room that owns this foe. Classic roster foes omit it. */
+  room?: string
+  /** Seconds of mining noise. Not stored. */
+  heard?: number
+  elite?: boolean
 }
 
 export interface SoulRite {
@@ -542,7 +557,10 @@ export function upgradeGear(save: ExtractSave, which: 'sword' | 'shield'): { ok:
   const level = which === 'sword' ? save.swordLevel : save.shieldLevel
   const cost = upgradeCost(level)
   if (cost == null) return { ok: false, reason: t('err.top') }
+  const oreNeed = upgradeOre(level)
+  if (oreNeed > 0 && count(save.stash, 'ore') < oreNeed) return { ok: false, reason: t('shop.oreUp', { n: oreNeed }) }
   if (save.coins < cost) return { ok: false, reason: t('shop.poor') }
+  if (oreNeed > 0 && !spendStack(save.stash, 'ore', oreNeed)) return { ok: false, reason: t('shop.oreUp', { n: oreNeed }) }
   save.coins -= cost
   const next = level + 1
   if (which === 'sword') {
@@ -883,6 +901,7 @@ export function deploy(save: ExtractSave, picks: Stack[], bringShield = false): 
     })(),
     banner: { text: t('soul.start'), life: 4.5, key: 'soul.start' },
   }
+  ensureChart(save.run)
   save.insured = null
   save.ventures += 1
   return null
@@ -1106,6 +1125,8 @@ function connectSwing(run: Run, from: number, to: number): void {
     noteHit(run, hit)
     if (foe.hp <= 0) slayFoe(run, foe)
   }
+  strikeVeins(run)
+  strikeBarrels(run)
 }
 
 function connectThrust(run: Run, from: number, to: number): void {
@@ -1143,6 +1164,8 @@ function connectThrust(run: Run, from: number, to: number): void {
     else noteHit(run, hit)
     if (foe.hp <= 0) slayFoe(run, foe)
   }
+  strikeVeins(run)
+  strikeBarrels(run)
 }
 
 function isKelabang(foe: Foe): boolean {
@@ -1232,6 +1255,10 @@ function slayFoe(run: Run, foe: Foe): void {
   run.slain.push(foe.id)
   if (foe.kind === 'boss') spawnBossChest(run, foe)
   else {
+    if (foe.elite) {
+      run.keys = (run.keys ?? 0) + 1
+      float(run, t('room.key'))
+    }
     const loot: ItemKind = foe.kind === 'spitter' || foe.kind === 'lurker' || foe.kind === 'spore' || foe.kind === 'web' ? 'ore' : foe.kind === 'beetle' || foe.kind === 'mole' || foe.kind === 'crusher' ? 'shard' : 'scrap'
     const drop: Drop = { id: `drop-${foe.id}`, kind: loot, x: foe.x, y: foe.y + 16 }
     if ((run.depth || 1) >= 2 && !foe.child) drop.unit = bossUnit(run, loot, foe.id.length)
@@ -1321,6 +1348,7 @@ export function step(run: Run, input: Input, dt: number): StepResult {
   run.x = Math.max(-ZONE_W / 2 + PLAYER_R, Math.min(ZONE_W / 2 - PLAYER_R, run.x))
   run.y = Math.max(-ZONE_H / 2 + PLAYER_R, Math.min(ZONE_H / 2 - PLAYER_R, run.y))
   crossZone(run)
+  tickDungeon(run, h)
   run.stepping = Math.hypot(run.x - originX, run.y - originY) > 0.04 && run.dodge <= 0
   if (run.stepping) run.gait += h * 10
   else run.gait *= Math.max(0, 1 - h * 12)
@@ -1367,7 +1395,7 @@ export function step(run: Run, input: Input, dt: number): StepResult {
   announceBoss(run)
 
   tickFoes(run, h)
-  const inside = run.zone === 'pangkalan' && Math.hypot(run.x - EXTRACT.x, run.y - EXTRACT.y) <= EXTRACT.r
+  const inside = standingInExtract(run)
   if (inside && run.hurt <= 0) run.channel = Math.min(EXTRACT_TIME, run.channel + h)
   else run.channel = 0
   if (run.hp <= 0) return 'dead'
@@ -1644,6 +1672,7 @@ export function runCrates(run: Run): Crate[] {
 }
 
 function openNear(run: Run): void {
+  if (useProps(run)) return
   const crate = runCrates(run).find((item) => item.zone === run.zone && !run.opened.includes(item.id) && Math.hypot(item.x - run.x, item.y - run.y) < 28)
   if (!crate) return
   run.opened.push(crate.id)
@@ -1956,6 +1985,20 @@ function tickFoes(run: Run, h: number): void {
       }
     }
     if (run.slain.includes(foe.id) || foe.hp <= 0 || foe.zone !== run.zone) continue
+    if (run.zone === 'kamar' && foe.room && foe.room !== run.roomId) continue
+    if ((foe.heard ?? 0) > 0) {
+      foe.heard = Math.max(0, (foe.heard ?? 0) - h)
+      const hx = run.x - foe.x
+      const hy = run.y - foe.y
+      const hd = Math.hypot(hx, hy) || 1
+      if (hd > 24) {
+        const pull = foe.kind === 'boss' ? 8 : 52
+        foe.x += (hx / hd) * pull * h
+        foe.y += (hy / hd) * pull * h
+        pinFoe(foe)
+      }
+      if (foe.cd > 0.2) foe.cd = 0.2
+    }
     if (isSpecial(foe)) {
       tickSpecial(run, foe, h)
       continue
@@ -2058,6 +2101,7 @@ function pinFoe(foe: Foe): void {
 }
 
 function crossZone(run: Run): void {
+  if (run.zone === 'kamar') return
   const left = -ZONE_W / 2 + PLAYER_R
   const right = ZONE_W / 2 - PLAYER_R
   const top = -ZONE_H / 2 + PLAYER_R
@@ -2085,6 +2129,354 @@ function crossZone(run: Run): void {
   }
 }
 
+export function ensureChart(run: Run): void {
+  const depth = Math.max(1, Math.min(DEPTH_CAP, run.depth || 1))
+  const seed = Math.floor(run.seed) || 1
+  if (!run.chart || run.chart.depth !== depth || run.chart.seed !== seed) {
+    run.chart = generateFloor(depth, seed)
+    run.seenRooms = []
+    run.flags = []
+    run.roomClock = 0
+  }
+  if (!run.flags) run.flags = []
+  if (!run.seenRooms) run.seenRooms = []
+  if (run.keys == null) run.keys = 0
+  const spine = run.zone === 'kamar' ? roomAt(run.chart, run.roomId) : spineRoom(run.chart, run.zone)
+  if (!run.roomId || !roomAt(run.chart, run.roomId) || (run.zone !== 'kamar' && spine && run.roomId !== spine.id && roomAt(run.chart, run.roomId)?.zone !== 'kamar')) {
+    run.roomId = spine?.id ?? run.chart.rooms[0]?.id
+  }
+  if (run.roomId && !run.seenRooms.includes(run.roomId)) run.seenRooms.push(run.roomId)
+  for (const spawn of run.chart.spawns) {
+    if (run.foes.some((foe) => foe.id === spawn.id)) continue
+    run.foes.push(spawnFoe(spawn))
+  }
+}
+
+function spawnFoe(spawn: SpawnNode): Foe {
+  return {
+    id: spawn.id,
+    zone: spawn.zone,
+    kind: (spawn.kind === 'boss' ? 'brute' : spawn.kind) as Foe['kind'],
+    x: spawn.x,
+    y: spawn.y,
+    hp: spawn.hp,
+    maxHp: spawn.hp,
+    damage: spawn.damage,
+    breed: spawn.breed,
+    wind: 0,
+    aim: 0,
+    cd: 0.8,
+    bolt: null,
+    flash: 0,
+    dash: 0,
+    pattern: 0,
+    phase: 0,
+    room: spawn.room,
+    elite: spawn.elite,
+  }
+}
+
+function standingInExtract(run: Run): boolean {
+  if (Math.hypot(run.x - EXTRACT.x, run.y - EXTRACT.y) > EXTRACT.r) return false
+  if (run.zone === 'pangkalan') return true
+  const room = run.chart ? roomAt(run.chart, run.roomId) : null
+  return room?.role === 'extract' || room?.role === 'fast'
+}
+
+function tickDungeon(run: Run, dt: number): void {
+  ensureChart(run)
+  const chart = run.chart
+  if (!chart) return
+  let room = roomAt(chart, run.roomId)
+  if (!room || (run.zone !== 'kamar' && room.zone !== run.zone)) room = spineRoom(chart, run.zone)
+  if (!room) return
+  if (run.roomId !== room.id) {
+    run.roomId = room.id
+    run.roomClock = 0
+    enterRoom(run, room)
+  }
+  run.roomClock = (run.roomClock ?? 0) + dt
+  if (!run.seenRooms) run.seenRooms = []
+  if (!run.seenRooms.includes(room.id)) run.seenRooms.push(room.id)
+  run.gloom = room.event === 'dark' ? 1 : 0
+  tickEvent(run, room)
+  tickHazard(run, room)
+  tryDoor(run, room)
+}
+
+function enterRoom(run: Run, room: RoomNode): void {
+  const flag = `enter:${room.id}`
+  if (!run.flags) run.flags = []
+  if (run.flags.includes(flag)) return
+  run.flags.push(flag)
+  if (room.event === 'ambush') {
+    float(run, t('room.ambush'))
+    burstFoes(run, room, 2, 'ambush')
+  }
+  if (room.event === 'dark') float(run, t('room.dark'))
+  if (room.event === 'collapse') float(run, t('room.fall'))
+  if (room.event === 'timed') float(run, t('room.door'))
+}
+
+function burstFoes(run: Run, room: RoomNode, count: number, tag: string): void {
+  for (let i = 0; i < count; i += 1) {
+    const breed = room.mix[i % room.mix.length] ?? 'crab'
+    const shift = layoutShift(room.layout, i)
+    const hp = Math.round((40 + (run.depth || 1) * 16) * (1 + ((run.depth || 1) - 1) * 0.1))
+    run.foes.push(spawnFoe({
+      id: `${room.id}-${tag}-${i}`,
+      room: room.id,
+      zone: room.zone,
+      kind: breed,
+      breed,
+      x: shift.x,
+      y: shift.y,
+      hp,
+      damage: 12 + (run.depth || 1) * 4,
+      elite: false,
+    }))
+  }
+}
+
+function roomClear(run: Run, roomId: string): boolean {
+  return run.foes.every((foe) => foe.room !== roomId || foe.hp <= 0 || run.slain.includes(foe.id))
+}
+
+function tickEvent(run: Run, room: RoomNode): void {
+  if (!run.flags) run.flags = []
+  if (room.event === 'waves' && roomClear(run, room.id) && !run.flags.includes(`wave:${room.id}`)) {
+    run.flags.push(`wave:${room.id}`)
+    float(run, t('room.wave'))
+    burstFoes(run, room, Math.min(4, 1 + Math.floor((run.depth || 1) / 2)), 'wave')
+  }
+  if (room.event === 'collapse' && (run.roomClock ?? 0) > 1.6) {
+    const tick = Math.floor((run.roomClock ?? 0) / 1.5)
+    const mark = `fall:${room.id}:${tick}`
+    if (!run.flags.includes(mark)) {
+      run.flags.push(mark)
+      hurtPlayer(run, 12, run.x, run.y - 20)
+    }
+  }
+}
+
+function tickHazard(run: Run, room: RoomNode): void {
+  const chart = run.chart
+  if (!chart) return
+  for (const prop of chart.props) {
+    if (prop.room !== room.id || prop.state === 'spent') continue
+    if (prop.kind !== 'puddle' && prop.kind !== 'lava' && prop.kind !== 'web' && prop.kind !== 'thorn' && prop.kind !== 'debris') continue
+    if (Math.hypot(prop.x - run.x, prop.y - run.y) > 18) continue
+    if (prop.kind === 'web') {
+      run.snare = Math.max(run.snare ?? 0, 1.1)
+      continue
+    }
+    const mark = `hurt:${prop.id}:${Math.floor(run.age * 2)}`
+    if (run.flags?.includes(mark)) continue
+    run.flags?.push(mark)
+    const amount = prop.kind === 'lava' ? 16 : prop.kind === 'puddle' ? 8 : 14
+    hurtPlayer(run, amount, prop.x, prop.y)
+  }
+}
+
+function doorAllowed(run: Run, room: RoomNode, door: { lock: string; to: string }): boolean {
+  if (door.lock === 'none') return true
+  if (door.lock === 'combat') return roomClear(run, room.id)
+  if (door.lock === 'secret') return !!run.flags?.includes(`secret:${door.to}`)
+  if (door.lock === 'timed') return !!run.flags?.includes(`lever:${room.id}`) || (run.roomClock ?? 0) < 8
+  return true
+}
+
+function tryDoor(run: Run, room: RoomNode): void {
+  for (const door of room.doors) {
+    if (door.to.startsWith('room-mine') || door.to.startsWith('room-ruin') || door.to.startsWith('room-boss') || door.to === 'room-start') {
+      if (room.zone !== 'kamar') continue
+    }
+    if (!nearPad(run.x, run.y, door.dir)) continue
+    if (!doorAllowed(run, room, door)) {
+      float(run, t('room.shut'))
+      const pad = doorPad(door.dir)
+      run.x += Math.sign(run.x - pad.x) || (door.dir === 'w' ? 1 : door.dir === 'e' ? -1 : 0)
+      run.y += door.dir === 'n' ? 8 : door.dir === 's' ? -8 : 0
+      return
+    }
+    const next = run.chart ? roomAt(run.chart, door.to) : null
+    if (!next) return
+    const back = door.dir === 'n' ? 's' : door.dir === 's' ? 'n' : door.dir === 'w' ? 'e' : 'w'
+    const land = doorPad(back)
+    run.zone = next.zone
+    run.roomId = next.id
+    run.x = land.x + (back === 'w' ? 36 : back === 'e' ? -36 : 0)
+    run.y = land.y + (back === 'n' ? 36 : back === 's' ? -36 : 0)
+    run.roomClock = 0
+    enterRoom(run, next)
+    return
+  }
+}
+
+function strikeVeins(run: Run): void {
+  const chart = run.chart
+  if (!chart) return
+  for (const vein of chart.veins) {
+    if (vein.hp <= 0 || run.swingHit.includes(vein.id)) continue
+    if (vein.zone !== run.zone || vein.room !== run.roomId) continue
+    const dx = vein.x - run.x
+    const dy = vein.y - run.y
+    const dist = Math.hypot(dx, dy)
+    if (dist > SWING_REACH) continue
+    const sample = Math.atan2(Math.sin(Math.atan2(dy, dx) - run.facing), Math.cos(Math.atan2(dy, dx) - run.facing))
+    if (dist > 12 && Math.abs(sample) > 1.15) continue
+    vein.hp -= 1
+    run.swingHit.push(vein.id)
+    miningNoise(run, vein.x, vein.y)
+    if (vein.hp > 0) {
+      float(run, t('ore.vein'))
+      continue
+    }
+    grantVein(run, vein)
+  }
+}
+
+function grantVein(run: Run, vein: VeinNode): void {
+  const need = vein.big ? 3 : 1
+  if (carriedCount(run) + need > bagSlotsOf(run.bagSlots)) {
+    vein.hp = 1
+    float(run, t('ore.full'))
+    return
+  }
+  for (let i = 0; i < need; i += 1) {
+    const coins = oreValue(vein.rarity, mixSeed(vein.id.length * 19 + (run.seed || 1) + i * 5))
+    addUnits(run.bag, 'ore', [{ rarity: vein.rarity, coins, origin: 'loot' }])
+  }
+  float(run, vein.big ? t('ore.big') : t('ore.break'))
+}
+
+export function miningNoise(run: Run, x: number, y: number): number {
+  let pulled = 0
+  for (const foe of run.foes) {
+    if (foe.hp <= 0 || run.slain.includes(foe.id) || foe.zone !== run.zone) continue
+    if (run.zone === 'kamar' && foe.room && foe.room !== run.roomId) continue
+    if (Math.hypot(foe.x - x, foe.y - y) > 180) continue
+    foe.heard = 5.5
+    foe.cd = Math.min(foe.cd, 0.15)
+    pulled += 1
+  }
+  if (pulled > 0) float(run, t('ore.noise'))
+  return pulled
+}
+
+function strikeBarrels(run: Run): void {
+  const chart = run.chart
+  if (!chart) return
+  for (const prop of chart.props) {
+    if (prop.kind !== 'barrel' || prop.state !== 'live' || prop.room !== run.roomId) continue
+    if (run.swingHit.includes(prop.id)) continue
+    if (Math.hypot(prop.x - run.x, prop.y - run.y) > SWING_REACH) continue
+    run.swingHit.push(prop.id)
+    blowBarrel(run, prop)
+  }
+}
+
+function blowBarrel(run: Run, prop: PropNode): void {
+  prop.state = 'spent'
+  float(run, t('room.boom'))
+  hurtPlayer(run, 18, prop.x, prop.y)
+  for (const foe of run.foes) {
+    if (foe.zone !== run.zone || foe.hp <= 0 || run.slain.includes(foe.id)) continue
+    if (run.zone === 'kamar' && foe.room && foe.room !== run.roomId) continue
+    if (Math.hypot(foe.x - prop.x, foe.y - prop.y) > 52) continue
+    foe.hp -= 24
+    foe.flash = 0.2
+    if (foe.hp <= 0) slayFoe(run, foe)
+  }
+}
+
+function useProps(run: Run): boolean {
+  const chart = run.chart
+  if (!chart) return false
+  const prop = chart.props.find((item) => item.room === run.roomId && item.state === 'live' && Math.hypot(item.x - run.x, item.y - run.y) < 28)
+  if (!prop) return false
+  if (prop.kind === 'shrine') {
+    if (run.flags?.includes(`rest:${prop.id}`)) {
+      float(run, t('room.dry'))
+      return true
+    }
+    run.flags = [...(run.flags ?? []), `rest:${prop.id}`]
+    run.hp = Math.min(HP_MAX, run.hp + 8)
+    prop.state = 'spent'
+    float(run, t('room.pool', { n: 8 }))
+    return true
+  }
+  if (prop.kind === 'crack') {
+    const room = roomAt(chart, run.roomId)
+    const door = room?.doors.find((item) => item.lock === 'secret')
+    if (door) run.flags = [...(run.flags ?? []), `secret:${door.to}`]
+    prop.state = 'open'
+    float(run, t('room.crack'))
+    return true
+  }
+  if (prop.kind === 'lever') {
+    run.flags = [...(run.flags ?? []), `lever:${prop.room}`]
+    prop.state = 'spent'
+    float(run, t('room.door'))
+    return true
+  }
+  if (prop.kind === 'chest') {
+    if (prop.lock === 'key' && (run.keys ?? 0) <= 0) {
+      float(run, t('room.locked'))
+      return true
+    }
+    if (prop.lock === 'key') run.keys = Math.max(0, (run.keys ?? 0) - 1)
+    prop.state = 'open'
+    spillLoot(run, prop)
+    return true
+  }
+  if (prop.kind === 'crate') {
+    prop.state = 'spent'
+    spillLoot(run, prop)
+    float(run, t('room.wood'))
+    return true
+  }
+  if (prop.kind === 'barrel') {
+    blowBarrel(run, prop)
+    return true
+  }
+  if (prop.kind === 'vendor') return false
+  return false
+}
+
+function spillLoot(run: Run, prop: PropNode): void {
+  prop.loot.forEach((kind, index) => {
+    const ang = -Math.PI / 2 + index * 0.6
+    run.drops.push({
+      id: `${prop.id}-${kind}-${index}`,
+      kind,
+      x: prop.x + Math.cos(ang) * 14,
+      y: prop.y + Math.sin(ang) * 12,
+      born: run.age,
+      hover: 0.8,
+      fromX: prop.x,
+      fromY: prop.y,
+      unit: { rarity: kind === 'relic' ? 'pusaka' : kind === 'shard' ? 'langka' : 'biasa', coins: oreValue(kind === 'relic' ? 'pusaka' : kind === 'shard' ? 'langka' : 'biasa', mixSeed(prop.id.length + index)), origin: 'loot' },
+    })
+  })
+}
+
+export const FIELD_PRICE = { bandage: 40, tonic: 32 } as const
+
+export function fieldBuy(save: ExtractSave, kind: 'bandage' | 'tonic'): string {
+  const run = save.run
+  if (!run?.chart) return ''
+  const vendor = run.chart.props.find((item) => item.kind === 'vendor' && item.room === run.roomId && item.state === 'live' && Math.hypot(item.x - run.x, item.y - run.y) < 32)
+  if (!vendor) return ''
+  const price = FIELD_PRICE[kind]
+  if (save.coins < price) return t('shop.poor')
+  if (carriedCount(run) >= bagSlotsOf(run.bagSlots)) return t('ore.full')
+  save.coins -= price
+  addUnits(run.bag, kind, [{ rarity: 'biasa', coins: kind === 'bandage' ? 8 : 6, origin: 'loot' }])
+  vendor.state = 'spent'
+  return t('room.price', { name: t(kind === 'bandage' ? 'item.bandage' : 'item.tonic'), n: price })
+}
+
 const visibleFoes: Foe[] = []
 
 /** Foes in the current room. The returned array is reused next call. */
@@ -2093,7 +2485,9 @@ export function foeView(run: Run): Foe[] {
   const slain = run.slain
   for (let i = 0; i < run.foes.length; i += 1) {
     const foe = run.foes[i]!
-    if (foe.zone === run.zone && foe.hp > 0 && !slain.includes(foe.id)) visibleFoes.push(foe)
+    if (foe.hp <= 0 || slain.includes(foe.id) || foe.zone !== run.zone) continue
+    if (run.zone === 'kamar' && foe.room && foe.room !== run.roomId) continue
+    visibleFoes.push(foe)
   }
   return visibleFoes
 }
@@ -2134,6 +2528,7 @@ export function descendFloor(run: Run): boolean {
   run.swing = 0
   run.swingHit = []
   run.floorCue = 1.8
+  ensureChart(run)
   return true
 }
 
@@ -2150,6 +2545,7 @@ export function warpFloor(run: Run, depth: number): void {
   run.explored = []
   run.bossTold = false
   run.floorCue = 0
+  ensureChart(run)
 }
 
 function tickStairs(run: Run, _h: number): void {
@@ -2159,7 +2555,7 @@ function tickStairs(run: Run, _h: number): void {
 }
 
 export function inExtract(run: Run): boolean {
-  return run.zone === 'pangkalan' && Math.hypot(run.x - EXTRACT.x, run.y - EXTRACT.y) <= EXTRACT.r
+  return standingInExtract(run)
 }
 
 export const EXTRACT_ZONE = EXTRACT

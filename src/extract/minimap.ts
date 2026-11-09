@@ -1,3 +1,4 @@
+import { roomAt, themeFor, type FloorChart } from './dungeon.ts'
 import { EXTRACT_ZONE, NEST_DOOR, ZONE_H, ZONE_W, nestGap, runCrates, type Run, type ZoneId } from './sim.ts'
 
 export const MAP_TILE = 20
@@ -32,9 +33,10 @@ export function exploredAt(run: Pick<Run, 'explored'>, zone: ZoneId, x: number, 
 export function reveal(run: Run): boolean {
   const have = new Set(run.explored)
   let added = false
-  for (let x = run.x - REACH; x <= run.x + REACH; x += MAP_TILE) {
-    for (let y = run.y - REACH; y <= run.y + REACH; y += MAP_TILE) {
-      if (Math.hypot(x - run.x, y - run.y) > REACH) continue
+  const reach = run.gloom ? REACH * 0.45 : REACH
+  for (let x = run.x - reach; x <= run.x + reach; x += MAP_TILE) {
+    for (let y = run.y - reach; y <= run.y + reach; y += MAP_TILE) {
+      if (Math.hypot(x - run.x, y - run.y) > reach) continue
       const key = tileKey(run.zone, x, y)
       if (!key || have.has(key)) continue
       have.add(key)
@@ -92,6 +94,7 @@ export function markers(run: Run): MapMarker[] {
 export function drawMinimap(ctx: CanvasRenderingContext2D, run: Run, width: number, height: number): void {
   ctx.imageSmoothingEnabled = false
   ctx.clearRect(0, 0, width, height)
+  if (run.chart && drawChart(ctx, run, run.chart, width, height)) return
   ctx.fillStyle = 'rgba(10, 8, 6, 0.55)'
   ctx.fillRect(0, 0, width, height)
   const pad = 4
@@ -194,4 +197,52 @@ export function drawMinimap(ctx: CanvasRenderingContext2D, run: Run, width: numb
       ctx.fillRect(Math.round(p.x + Math.cos(face) * 5 - 1), Math.round(p.y + Math.sin(face) * 5 - 1), 2, 2)
     }
   }
+}
+
+function drawChart(ctx: CanvasRenderingContext2D, run: Run, chart: FloorChart, width: number, height: number): boolean {
+  if (chart.rooms.length === 0) return false
+  const paint = themeFor(chart.depth)
+  let minX = 0
+  let minY = 0
+  let maxX = 0
+  let maxY = 0
+  for (const room of chart.rooms) {
+    minX = Math.min(minX, room.gx)
+    minY = Math.min(minY, room.gy)
+    maxX = Math.max(maxX, room.gx)
+    maxY = Math.max(maxY, room.gy)
+  }
+  const cols = maxX - minX + 1
+  const rows = maxY - minY + 1
+  const pad = 6
+  const gap = 3
+  const cell = Math.max(6, Math.floor(Math.min((width - pad * 2 - gap * (cols - 1)) / cols, (height - pad * 2 - gap * (rows - 1)) / rows)))
+  const originX = Math.round((width - (cols * cell + (cols - 1) * gap)) / 2)
+  const originY = Math.round((height - (rows * cell + (rows - 1) * gap)) / 2)
+  const seen = new Set(run.seenRooms ?? [])
+  const at = (gx: number, gy: number) => ({
+    x: originX + (gx - minX) * (cell + gap),
+    y: originY + (gy - minY) * (cell + gap),
+  })
+  for (const room of chart.rooms) {
+    if (room.secret && !seen.has(room.id)) continue
+    const p = at(room.gx, room.gy)
+    const known = seen.has(room.id)
+    ctx.fillStyle = known ? paint.floor : '#100e0c'
+    ctx.fillRect(p.x, p.y, cell, cell)
+    ctx.strokeStyle = room.id === run.roomId ? '#f2c04a' : paint.trim
+    ctx.strokeRect(p.x + 0.5, p.y + 0.5, cell - 1, cell - 1)
+    if (!known) continue
+    const icon = room.role === 'boss' ? '#e10600' : room.role === 'extract' || room.role === 'fast' || room.role === 'start' ? '#40dc60' : room.role === 'merchant' ? '#f2c04a' : room.role === 'rest' ? '#7ec8c4' : room.role === 'secret' ? '#d5dee6' : ''
+    if (!icon) continue
+    ctx.fillStyle = icon
+    ctx.fillRect(p.x + cell / 2 - 2, p.y + cell / 2 - 2, 4, 4)
+  }
+  const here = roomAt(chart, run.roomId) ?? chart.rooms.find((room) => room.zone === run.zone)
+  if (here) {
+    const p = at(here.gx, here.gy)
+    ctx.fillStyle = '#f4f1e8'
+    ctx.fillRect(p.x + 2, p.y + cell - 6, 3, 3)
+  }
+  return true
 }

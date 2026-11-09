@@ -1,14 +1,15 @@
+import { generateFloor, type FloorChart, type PropNode, type VeinNode } from './dungeon.ts'
 import { asBlade, bladesOf, DEPTH_CAP } from './depths.ts'
 import { asSpear, rollSpear, type Spear } from './spear.ts'
 import { mintUnit, readUnit, type ItemUnit } from './coins.ts'
 import { bagSlotsOf, clampLevel, shieldMaxFor } from './economy.ts'
-import { HP_MAX, HP_OLD, SHIELD_MAX, freshSave, scheduleSoul, spawnRoster, type Crate, type Drop, type ExtractSave, type Foe, type Insured, type ItemKind, type Run, type SoulRite, type Stack, type ZoneId } from './sim.ts'
+import { ensureChart, HP_MAX, HP_OLD, SHIELD_MAX, freshSave, scheduleSoul, spawnRoster, type Crate, type Drop, type ExtractSave, type Foe, type Insured, type ItemKind, type Run, type SoulRite, type Stack, type ZoneId } from './sim.ts'
 
 export const EXTRACT_SAVE_KEY = 'npcs-burrow-pixel-extract.save.v1'
 const EXTRACT_SAVE_TMP = `${EXTRACT_SAVE_KEY}.tmp`
 
 const KINDS: ItemKind[] = ['sword', 'bandage', 'tonic', 'scrap', 'ore', 'relic', 'shard', 'tombak', 'bilah', 'p3k']
-const ZONES: ZoneId[] = ['pangkalan', 'tambang', 'reruntuhan', 'sarang']
+const ZONES: ZoneId[] = ['pangkalan', 'tambang', 'reruntuhan', 'sarang', 'kamar']
 const FOE_KINDS = ['crab', 'spitter', 'brute', 'lurker', 'boss', 'moth', 'burrow', 'spore', 'beetle', 'jelly', 'swarm', 'mole', 'web', 'ember', 'leech', 'bomber', 'wisp', 'crusher']
 
 function readSave(raw: string | null): ExtractSave | null {
@@ -85,6 +86,7 @@ function sanitize(value: unknown): ExtractSave {
     save.shieldGranted = true
   }
   if (save.run) {
+    ensureChart(save.run)
     const lifted: Spear[] = []
     save.run.bag = liftTombak(save.run.bag, lifted, 11)
     save.run.found = [...save.run.found, ...lifted]
@@ -168,6 +170,27 @@ function unitsFor(kind: ItemKind, n: number, raw: unknown, salt: number): ItemUn
   return units
 }
 
+function chartOf(raw: Partial<Run>, depth: number, seed: number): FloorChart {
+  const chart = generateFloor(depth, seed)
+  const saved = (raw as { chart?: { veins?: VeinNode[]; props?: PropNode[] } }).chart
+  if (!saved || typeof saved !== 'object') return chart
+  if (Array.isArray(saved.veins)) {
+    for (const vein of chart.veins) {
+      const hit = saved.veins.find((item) => item && item.id === vein.id)
+      if (!hit || typeof hit.hp !== 'number' || !Number.isFinite(hit.hp)) continue
+      vein.hp = Math.max(0, Math.min(vein.max, Math.floor(hit.hp)))
+    }
+  }
+  if (Array.isArray(saved.props)) {
+    for (const prop of chart.props) {
+      const hit = saved.props.find((item) => item && item.id === prop.id)
+      if (!hit) continue
+      if (hit.state === 'spent' || hit.state === 'open' || hit.state === 'live') prop.state = hit.state
+    }
+  }
+  return chart
+}
+
 function runOf(value: unknown): Run | null {
   if (typeof value !== 'object' || value === null) return null
   const raw = value as Partial<Run>
@@ -216,6 +239,11 @@ function runOf(value: unknown): Run | null {
     bagSlots,
     insured: insuredOf((raw as { insured?: unknown }).insured),
     soul: soulOf((raw as { soul?: unknown }).soul, Math.floor(num(raw.seed)) || 1),
+    chart: chartOf(raw, Math.max(1, Math.min(DEPTH_CAP, Math.floor(num(raw.depth)) || 1)), Math.floor(num(raw.seed)) || 1),
+    roomId: typeof (raw as { roomId?: unknown }).roomId === 'string' ? (raw as { roomId: string }).roomId : undefined,
+    seenRooms: strings((raw as { seenRooms?: unknown }).seenRooms),
+    flags: strings((raw as { flags?: unknown }).flags),
+    keys: Math.max(0, Math.floor(num((raw as { keys?: unknown }).keys))),
   }
 }
 
@@ -252,6 +280,10 @@ function foesOf(value: unknown, slain: string[], depth: number, seed: number): F
     if (!kept) return spot
     return { ...spot, x: kept.x, y: kept.y, hp: kept.hp, aim: kept.aim, pattern: kept.pattern }
   })
+  for (const foe of parsed) {
+    if (foe.zone !== 'kamar' || source.some((spot) => spot.id === foe.id)) continue
+    source.push(foe)
+  }
   return source.map((foe) => ({ ...foe, hp: slain.includes(foe.id) ? 0 : foe.hp, wind: 0, dash: 0, bolt: null, flash: 0, cd: 0.4 }))
 }
 
@@ -278,6 +310,8 @@ function foeRow(value: unknown): Foe | null {
     damage: Number.isFinite(Number(row.damage)) ? Math.max(0, Number(row.damage)) : undefined,
     phase: Math.max(0, Math.floor(num(row.phase))),
     child: row.child === true,
+    room: typeof row.room === 'string' ? row.room : undefined,
+    elite: row.elite === true,
   }
 }
 
@@ -345,7 +379,7 @@ function exploredOf(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   const out: string[] = []
   for (const item of value) {
-    if (typeof item !== 'string' || !/^(pangkalan|tambang|reruntuhan|sarang):\d+:\d+$/.test(item)) continue
+    if (typeof item !== 'string' || !/^(pangkalan|tambang|reruntuhan|sarang|kamar):\d+:\d+$/.test(item)) continue
     if (!out.includes(item)) out.push(item)
   }
   return out

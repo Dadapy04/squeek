@@ -38,6 +38,7 @@ import {
   soulNear,
   count,
   deploy,
+  fieldBuy,
   equipBlade,
   equipSpear,
   unequipBlade,
@@ -61,6 +62,7 @@ import {
   step,
   unequipSpear,
   useItem,
+  warpFloor,
   type ExtractSave,
   type Input,
   type ItemKind,
@@ -670,7 +672,8 @@ function paintWorkshop(): void {
       button.dataset.upgrade = card.which
       const text = document.createElement('span')
       text.className = 'shop-copy'
-      text.textContent = card.cost == null ? `${card.title}. ${card.now}. ${card.next}` : `${card.title}. ${card.now} → ${card.next}. ${card.cost} ${t('coin.word')}`
+      const oreNote = card.ore > 0 ? ` + ${card.ore} ${t('item.ore')}` : ''
+      text.textContent = card.cost == null ? `${card.title}. ${card.now}. ${card.next}` : `${card.title}. ${card.now} → ${card.next}. ${card.cost} ${t('coin.word')}${oreNote}`
       if (!card.enabled && card.reason) {
         const why = document.createElement('small')
         why.textContent = card.reason
@@ -964,6 +967,10 @@ function frame(now: number): void {
     } else if (save.run && !outcome && fieldVisible()) {
       const now = performance.now()
       const input = readInput()
+      if (input.interact && save.run) {
+        const note = fieldBuy(save, 'bandage')
+        if (note) save.run.floats.push({ text: note, life: 1.6 })
+      }
       const cdBefore = save.run.attackCd
       const next = step(save.run, input, dt)
       attackBuffer = disarmAttack(attackBuffer, (save.run?.attackCd ?? 0) > cdBefore, now)
@@ -1360,6 +1367,7 @@ function hint(zone: ZoneId): string {
   if (zone === 'pangkalan') return t('hint.base')
   if (zone === 'tambang') return t('hint.mine')
   if (zone === 'sarang') return t('hint.nest')
+  if (zone === 'kamar') return t('hint.side')
   return t('hint.ruins')
 }
 
@@ -1367,6 +1375,7 @@ function zoneLabel(zone: ZoneId): string {
   if (zone === 'pangkalan') return t('zone.base')
   if (zone === 'tambang') return t('zone.mine')
   if (zone === 'sarang') return t('zone.nest')
+  if (zone === 'kamar') return t('zone.side')
   return t('zone.ruins')
 }
 
@@ -1793,11 +1802,67 @@ declare global {
       chests: () => string
       loot: () => string
       reveal: () => string
+      pose: (depth: number, kind: string) => { depth: number; theme: string; room: string; zone: string } | null
     }
   }
 }
 window.__npcsExtract = {
   save: () => save,
+  pose: (depth: number, kind: string) => {
+    if (!save.run) deploy(save, [{ kind: 'sword', n: 1 }])
+    const run = save.run
+    if (!run) return null
+    const want = Math.max(1, Math.min(7, depth))
+    for (let i = 0; i < 16; i += 1) {
+      run.seed = i + 1
+      warpFloor(run, want)
+      const chart = run.chart
+      if (!chart) continue
+      if (kind === 'big' && !chart.veins.some((vein) => vein.big)) continue
+      if (kind === 'merchant' && !chart.rooms.some((room) => room.role === 'merchant')) continue
+      if (kind === 'secret' && !chart.rooms.some((room) => room.role === 'secret')) continue
+      break
+    }
+    titleOpen = false
+    titleEl.hidden = true
+    document.body.classList.remove('title')
+    show('field')
+    const chart = run.chart
+    if (kind === 'vein' || kind === 'big') {
+      const vein = chart?.veins.find((item) => (kind === 'big' ? item.big : !item.big)) ?? chart?.veins[0]
+      if (vein) {
+        vein.x = 26
+        vein.y = 0
+        run.zone = vein.zone
+        run.roomId = vein.room
+        run.x = 0
+        run.y = 0
+        run.facing = 0
+        vein.hp = Math.max(1, vein.max - 2)
+      }
+    } else if (kind === 'map') {
+      run.seenRooms = chart?.rooms.filter((room) => !room.secret).map((room) => room.id) ?? []
+      run.zone = 'pangkalan'
+      run.roomId = 'room-start'
+      run.x = 0
+      run.y = 40
+    } else if (kind === 'theme') {
+      run.zone = 'tambang'
+      run.roomId = 'room-mine'
+      run.x = 0
+      run.y = 10
+    } else {
+      const room = chart?.rooms.find((item) => item.role === kind) ?? chart?.rooms[0]
+      if (room) {
+        run.zone = room.zone
+        run.roomId = room.id
+        run.x = room.role === 'extract' || room.role === 'fast' ? 0 : 8
+        run.y = room.role === 'extract' || room.role === 'fast' ? -80 : 16
+        run.seenRooms = [...new Set([...(run.seenRooms ?? []), room.id])]
+      }
+    }
+    return { depth: run.depth, theme: run.chart?.theme ?? '', room: run.roomId ?? '', zone: run.zone }
+  },
   frameWork: () => {
     const sample = Array.from(frameWork.subarray(0, frameWorkN))
     sample.sort((a, b) => a - b)

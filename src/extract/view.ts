@@ -5,6 +5,7 @@ import { drawHero, drawMaw, drawWing } from './pose.ts'
 import { spearReach, spearRgb } from './spear.ts'
 import { bossDisplay, bossPattern, depthPlan, foeName, lineup, type AttackKind } from './depths.ts'
 import { t } from './i18n.ts'
+import { roomAt, themeFor } from './dungeon.ts'
 import { EXTRACT_ZONE, FOE_SPOTS, NEST_DOOR, SOUL_CAST, SOUL_RADIUS, STAIRS, SWING_REACH, ZONE_H, ZONE_W, claimTarget, depthMods, foeView, isSpecial, nestGap, runCrates, stairsOpen, syncCentipede, swordAim, type Drop, type Foe, type Run } from './sim.ts'
 
 interface Puff {
@@ -150,9 +151,15 @@ export function drawExtract(
   drawBackdrop(ctx, scale, at, width, height, originX, originY, run.age, run.zone)
   drawFloor(ctx, run, scale, at)
   drawMineDressing(ctx, run, scale, at)
+  drawDungeonDress(ctx, run, scale, at)
   tickEffects(run)
   drawEffects(ctx, at, scale)
-  if (run.zone === 'pangkalan') drawCircle(ctx, at, scale, run.age)
+  const here = run.chart ? roomAt(run.chart, run.roomId) : null
+  if (run.zone === 'pangkalan' || here?.role === 'extract' || here?.role === 'fast') drawCircle(ctx, at, scale, run.age)
+  if (run.gloom) {
+    ctx.fillStyle = 'rgba(4, 6, 10, 0.55)'
+    ctx.fillRect(0, 0, width, height)
+  }
   if (run.zone === 'sarang') drawStairs(ctx, at, scale, run)
   drawSoulShrine(ctx, run, at, scale)
   for (const crate of runCrates(run)) {
@@ -1041,6 +1048,95 @@ export function drawChestStrip(ctx: CanvasRenderingContext2D, width: number, hei
       ctx.fillText(`${fancy ? t('item.short.relic') : t('chest.word')} ${names[col]}`, x, y - 74)
     })
   })
+}
+
+function drawDungeonDress(
+  ctx: CanvasRenderingContext2D,
+  run: Run,
+  scale: number,
+  at: (x: number, y: number) => { x: number; y: number },
+): void {
+  const paint = themeFor(run.depth || 1)
+  const room = run.chart ? roomAt(run.chart, run.roomId) : null
+  ctx.fillStyle = paint.floor
+  ctx.globalAlpha = 0.42
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+  ctx.globalAlpha = 1
+  const stamp = at(-ZONE_W / 2 + 16, -ZONE_H / 2 + 16)
+  ctx.fillStyle = paint.trim
+  for (let i = 0; i < 5; i += 1) {
+    ctx.fillRect(Math.round(stamp.x + i * 28 * scale), Math.round(stamp.y), Math.max(2, scale * 2), Math.round(10 * scale))
+  }
+  const motes = room?.layout === 'lane' ? 6 : 10
+  for (let i = 0; i < motes; i += 1) {
+    const x = -ZONE_W / 2 + 18 + ((i * 37 + Math.floor(run.age * 8)) % (ZONE_W - 36))
+    const y = -ZONE_H / 2 + 24 + ((i * 53) % (ZONE_H - 48))
+    const p = at(x, y - (run.age * 6 + i * 4) % 20)
+    ctx.fillStyle = paint.mote
+    ctx.globalAlpha = 0.35 + (i % 3) * 0.15
+    ctx.fillRect(Math.round(p.x), Math.round(p.y), Math.max(1, scale), Math.max(1, scale))
+  }
+  ctx.globalAlpha = 1
+  for (const vein of run.chart?.veins ?? []) {
+    if (vein.hp <= 0 || vein.room !== run.roomId) continue
+    const p = at(vein.x, vein.y)
+    const s = Math.max(1, scale)
+    ctx.fillStyle = '#2a241c'
+    ctx.fillRect(Math.round(p.x - 6 * s), Math.round(p.y - 8 * s), Math.round(12 * s), Math.round(14 * s))
+    ctx.fillStyle = vein.big ? '#f2c04a' : vein.rarity === 'legenda' ? '#f2c04a' : vein.rarity === 'pusaka' ? '#b388ff' : vein.rarity === 'langka' ? '#7ec8c4' : '#c4a15a'
+    const glint = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(run.age * 5 + vein.x))
+    ctx.globalAlpha = glint
+    const w = vein.big ? 16 : 7
+    const h = vein.big ? 14 : 8
+    if (vein.big) {
+      ctx.fillStyle = '#f2c04a'
+      ctx.globalAlpha = 0.35
+      ctx.fillRect(Math.round(p.x - 14 * s), Math.round(p.y - 12 * s), Math.round(28 * s), Math.round(24 * s))
+      ctx.globalAlpha = glint
+    }
+    ctx.fillRect(Math.round(p.x - w * s * 0.5), Math.round(p.y - h * s * 0.5), Math.round(w * s), Math.round(h * s))
+    ctx.globalAlpha = 1
+    ctx.fillStyle = '#f7e7a0'
+    ctx.fillRect(Math.round(p.x), Math.round(p.y - 2 * s), s, s)
+    const cracks = vein.max - vein.hp
+    ctx.fillStyle = '#1a140f'
+    for (let c = 0; c < cracks; c += 1) ctx.fillRect(Math.round(p.x - 3 * s + c * 2 * s), Math.round(p.y + s), s, Math.round(3 * s))
+  }
+  for (const prop of run.chart?.props ?? []) {
+    if (prop.room !== run.roomId || prop.state === 'spent') continue
+    const p = at(prop.x, prop.y)
+    const s = Math.max(1, scale)
+    if (prop.kind === 'barrel') {
+      ctx.fillStyle = '#8a5a32'
+      ctx.fillRect(Math.round(p.x - 4 * s), Math.round(p.y - 5 * s), Math.round(8 * s), Math.round(8 * s))
+    } else if (prop.kind === 'crate') {
+      ctx.fillStyle = '#6b4424'
+      ctx.fillRect(Math.round(p.x - 5 * s), Math.round(p.y - 4 * s), Math.round(10 * s), Math.round(7 * s))
+    } else if (prop.kind === 'chest') {
+      ctx.fillStyle = prop.state === 'open' ? '#4a3828' : '#c4a15a'
+      ctx.fillRect(Math.round(p.x - 6 * s), Math.round(p.y - 4 * s), Math.round(12 * s), Math.round(8 * s))
+    } else if (prop.kind === 'shrine') {
+      ctx.fillStyle = '#7ec8c4'
+      ctx.globalAlpha = 0.35
+      ctx.fillRect(Math.round(p.x - 10 * s), Math.round(p.y - 6 * s), Math.round(20 * s), Math.round(10 * s))
+      ctx.globalAlpha = 1
+    } else if (prop.kind === 'vendor') {
+      ctx.fillStyle = '#f2c04a'
+      ctx.fillRect(Math.round(p.x - 6 * s), Math.round(p.y - 8 * s), Math.round(12 * s), Math.round(10 * s))
+    } else if (prop.kind === 'crack') {
+      ctx.fillStyle = '#d5dee6'
+      ctx.fillRect(Math.round(p.x - 2 * s), Math.round(p.y - 8 * s), s, Math.round(12 * s))
+      ctx.fillRect(Math.round(p.x + 2 * s), Math.round(p.y - 4 * s), s, Math.round(8 * s))
+    } else if (prop.kind === 'puddle' || prop.kind === 'lava' || prop.kind === 'web' || prop.kind === 'debris' || prop.kind === 'thorn') {
+      ctx.fillStyle = paint.hazard
+      ctx.globalAlpha = 0.55
+      ctx.fillRect(Math.round(p.x - 8 * s), Math.round(p.y - 4 * s), Math.round(16 * s), Math.round(8 * s))
+      ctx.globalAlpha = 1
+    } else if (prop.kind === 'lever') {
+      ctx.fillStyle = '#c4b8a4'
+      ctx.fillRect(Math.round(p.x), Math.round(p.y - 6 * s), s, Math.round(8 * s))
+    }
+  }
 }
 
 function floorFill(zone: Run['zone']): string {
