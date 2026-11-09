@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#8ed36a" />
+    <title>NPCS: BURROW · Arena</title>
+    <link rel="stylesheet" href="/src/arena/arena.css" />
+  </head>
+  <body>
+    <div id="hud">
+      <header id="topbar">
+        <div class="compact">
+          <strong id="waveText">Gelombang 1</strong>
+          <button id="detailBtn" type="button">Rinci</button>
+        </div>
+        <div class="labeled"><span>Nyawa</span><div class="bar" aria-label="Nyawa"><i id="hpFill"></i></div></div>
+        <div class="labeled"><span>Badai</span><div class="bar storm" aria-label="Badai"><i id="stormFill"></i></div></div>
+        <p id="message">Gelombang 1. Mendekat, pedang bekerja sendiri.</p>
+      </header>
+      <section id="detail" hidden>
+        <div class="row">
+          <strong id="brand">NPCS: BURROW</strong>
+          <span id="bestText">Rekor lokal 0</span>
+          <span id="coinsText">0 remah latihan</span>
+        </div>
+        <div class="labeled"><span>Cadangan</span><div class="bar reserve" aria-label="Cadangan roda"><i id="reserveFill"></i></div></div>
+        <p id="wheelState">Roda: membaca…</p>
+        <p id="wheelMeta"></p>
+        <div class="modes">
+          <button id="modeStorm" type="button" aria-pressed="true">Badai+</button>
+          <button id="modeShield" type="button" aria-pressed="false">Perisai</button>
+          <button id="armShield" type="button" hidden>Pasang</button>
+          <a href="https://squeekchain.com" target="_blank" rel="noreferrer">SqueekChain</a>
+        </div>
+        <p id="statLine">Tebas 9 · jeda 0.42s · gerak 156 · capai 78</p>
+        <div class="links">
+          <button id="pedangBtn" type="button" aria-pressed="true">Pedang</button>
+          <button id="tombakBtn" type="button" aria-pressed="false">Tombak</button>
+          <button id="pauseBtn" type="button">Jeda</button>
+          <button id="viewBtn" type="button">3D</button>
+          <button id="sqkBtn" type="button">SQK</button>
+          <a href="./index.html">Galian</a>
+          <a href="./rpg.html">RPG</a>
+          <a href="./legacy.html">Extraction lama</a>
+        </div>
+        <p id="help">WASD/panah, Space hindar, E badai. Tampilan awal piksel, kamera mengikuti petarung. Tombol 3D membuka cadangan. Badai+ atau Perisai memakai cadangan roda. Q memasang perisai. Gambar ini adaptasi, bukan aset resmi. SQK belum dikonfigurasi.</p>
+      </section>
+      <div id="play">
+        <canvas id="arena"></canvas>
+        <canvas id="arena3d"></canvas>
+      </div>
+      <div id="controls">
+        <div id="stick" aria-label="Gerak"><i id="knob"></i></div>
+        <div id="actions">
+          <button id="dodgeBtn" type="button"><span>Hindar</span><small id="dodgeHint"></small></button>
+          <button id="stormBtn" type="button"><span>Badai</span><small id="stormHint"></small></button>
+        </div>
+      </div>
+      <section id="pick" hidden>
+        <h2>Pilih satu</h2>
+        <p>Berlaku sampai lari ini selesai. Nyawa tidak pulih.</p>
+        <div id="cards"></div>
+      </section>
+      <section id="end" hidden>
+        <h2 id="endTitle">Kalah</h2>
+        <p id="endBody"></p>
+        <button id="againBtn" type="button">Lagi</button>
+      </section>
+      <section id="web3Host" hidden>
+        <h2>SQK belum dikonfigurasi</h2>
+        <p>Token yang direncanakan bernama SQK, bukan NPCS. Jaringan awal yang dimaksud Ethereum Sepolia (11155111), bukan Unichain dan bukan mainnet.</p>
+        <p>Alamat kontrak, saldo, hadiah, toko, swap, setor, dan klaim tidak ada. Arena tetap dimainkan tanpa dompet. Tombol ini tidak menghubungkan dompet dan tidak mengirim transaksi.</p>
+      </section>
+    </div>
+    <script type="module" src="/src/arena/boot.ts"></script>
+  </body>
+</html>

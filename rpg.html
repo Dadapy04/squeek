@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#100910" />
+    <title>NPCS: Burrow RPG (cadangan)</title>
+    <link rel="stylesheet" href="/src/rpg/site.css" />
+  </head>
+  <body>
+    <main id="hub">
+      <section class="hero">
+        <p class="kicker">RPG aksi · fantasi gelap</p>
+        <h1>NPCS: Burrow</h1>
+        <p class="lede">Hamster petualang turun ke runtuhan bawah tanah. Pedang, kemampuan, monster, dan satu penjaga. Loot di sini milik permainan, bukan token rantai.</p>
+        <p class="controls-copy">Desktop: WASD, seret kamera, J pedang, K cakar, Spasi hindar, E peti. Ponsel: tongkat, seret layar, tombol di bawah.</p>
+        <div class="links">
+          <button id="playBtn" type="button">Main</button>
+          <a href="./index.html">Arena</a> · <a href="./legacy.html">Extraction</a>
+        </div>
+        <p id="wheelStatus">Roda: belum diminta</p>
+      </section>
+      <section id="web3Root" aria-label="Panel dompet testnet"></section>
+    </main>
+    <div id="stage" hidden>
+      <canvas id="rpg" aria-label="Runtuhan Burrow, orang ketiga"></canvas>
+      <div id="rpgHud">
+        <div id="rpgTop">
+          <div id="rpgBars">
+            <div>Nyawa <span id="rpgHp">100/100</span></div>
+            <div>Fokus <span id="rpgFocus">100</span></div>
+          </div>
+          <p id="rpgMessage">Kuil runtuh.</p>
+        </div>
+        <aside id="rpgCoach">
+          <p>Tiga tebasan beruntun. Cakar Bayangan menghabiskan fokus. Hindar sebelum hantaman emas. Peti di lorong memasang taring dan bilah.</p>
+          <button id="rpgCoachOk" type="button">Mengerti</button>
+        </aside>
+        <section id="rpgEnd" hidden>
+          <h2 id="rpgEndTitle">Selesai</h2>
+          <p id="rpgEndBody"></p>
+          <button id="rpgAgain" type="button">Coba lagi</button>
+          <button id="rpgLeave" type="button">Ke situs</button>
+        </section>
+        <div id="rpgDock">
+          <div id="rpgStick" role="slider" aria-label="Tongkat gerak"></div>
+          <div class="rpg-pad">
+            <button id="rpgUse" type="button" hidden>Ambil</button>
+            <button id="rpgSkill" type="button">Cakar</button>
+            <button id="rpgDodge" type="button">Hindar</button>
+            <button id="rpgAttack" type="button">Pedang</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/site.ts"></script>
+  </body>
+</html>
