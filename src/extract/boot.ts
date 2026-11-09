@@ -1,4 +1,4 @@
-import { applyWheelBody, createWheelSession, resetWheelBaseline, STATUS_URL, unavailableDecision, type WheelDecision } from '../arena/wheel.ts'
+import { applyWheelBody, createWheelSession, resetWheelBaseline, STATUS_URL } from '../arena/wheel.ts'
 import { drawAssetSheet } from './patterns.ts'
 import { drawBlockStrip, drawCarryStrip, drawContactSheet, drawDirectionStrip, drawHoldStrip, drawSwingStrip, drawWalkStrip } from './pose.ts'
 import { paintTitleScreen, titleUsesDesktopPrompt } from './title.ts'
@@ -109,9 +109,7 @@ let stashFocus: { kind: ItemKind; coins?: number; spearId?: string; box?: boolea
 let outcome: 'extracted' | 'dead' | null = null
 type ResultRow = { kind: string; name: string; n: number; value: number; rarity?: CoinRarity; brought: boolean; live?: ItemKind; spear?: Spear }
 let lastResult: { kind: 'extracted' | 'dead'; rows: ResultRow[]; gained: number } | null = null
-let wheelText = ''
 const wheel = createWheelSession()
-let decision: WheelDecision = unavailableDecision('belum ada bacaan')
 
 settleLoaded()
 renderBase()
@@ -1466,8 +1464,6 @@ function renderBase(): void {
     trayEl.append(worn)
   }
   for (const stack of picks) trayEl.append(chip(`${LABELS[stack.kind]} ${stack.n}`, () => returnPick(stack.kind), stack.kind))
-  const wheelBase = document.querySelector('#wheelBase')!
-  wheelBase.textContent = t('wheel.base', { text: wheelText || t('wheel.down'), n: save.support })
   const resume = document.querySelector<HTMLButtonElement>('#resume')!
   resume.hidden = save.run == null
 }
@@ -1764,19 +1760,16 @@ async function pollWheel(): Promise<void> {
     const text = await response.text()
     let body: unknown = null
     try { body = JSON.parse(text) } catch { body = null }
-    decision = applyWheelBody(wheel, body, Date.now(), response.status)
+    const decision = applyWheelBody(wheel, body, Date.now(), response.status)
     if (decision.energy > 0) {
       addSupport(save, decision.energy)
       writeExtract(storage, save)
+      if (!field.hidden) paint()
     }
-    wheelText = decision.feed === 'running' ? t('wheel.spin') : decision.feed === 'resting' ? t('wheel.rest') : t('wheel.none')
   } catch {
-    decision = unavailableDecision('jaringan atau waktu habis')
-    wheelText = t('wheel.down')
+    // The feed only tops up the hold reserve. A miss leaves the saved reserve as it is.
   } finally {
     clearTimeout(timer)
-    if (!field.hidden) paint()
-    if (!base.hidden) renderBase()
   }
 }
 void pollWheel()

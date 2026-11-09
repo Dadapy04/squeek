@@ -39,6 +39,23 @@ describe('title screen', () => {
     expect(titleLayout(844, 390, phone).sceneScale).toBeGreaterThanOrEqual(2)
   })
 
+  it('keeps the prototype wheel feed and backup pages off the base screen', () => {
+    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
+    const copy = readFileSync(new URL('../src/extract/i18n.ts', import.meta.url), 'utf8')
+    const vite = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8')
+    for (const phrase of ['wheelBase', 'arena.html', 'rpg.html', 'legacy.html', 'Wave arena', 'Old extraction', 'Not a token', 'Bukan token', 'Arena gelombang', 'Extraction lama', 'nav.arena', 'wheel.wait', 'wheel.base', 'wheel.spin']) {
+      expect(html, phrase).not.toContain(phrase)
+      expect(copy, phrase).not.toContain(phrase)
+    }
+    expect(boot).not.toContain('wheelText')
+    expect(boot).not.toContain('#wheelBase')
+    expect(boot).toContain('addSupport(save, decision.energy)')
+    expect(boot).toContain('STATUS_URL')
+    expect(vite).toContain("arena: resolve('arena.html')")
+    expect(vite).toContain("rpg: resolve('rpg.html')")
+    expect(vite).toContain("legacy: resolve('legacy.html')")
+  })
+
   it('starts on tap or Enter and does not rename the save', () => {
     expect(EXTRACT_SAVE_KEY).toBe('npcs-burrow-pixel-extract.save.v1')
     expect(boot).toContain("titleEl.addEventListener('pointerdown'")

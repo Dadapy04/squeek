@@ -309,7 +309,6 @@ button { cursor: pointer; }
   #base .chip { min-height: 36px; min-width: 0; padding: 4px 10px 4px 36px; font-size: 12px; background-size: 22px 22px; background-position: 8px center; }
   #base .note { margin: 6px 0; padding: 6px 8px; font-size: 11px; line-height: 1.3; }
   #base .row { margin: 6px 0; gap: 6px; }
-  #base .nav a { padding: 4px 10px; font-size: 12px; }
   #depart {
     padding:
       6px
@@ -355,7 +354,7 @@ h1.logo img {
   line-height: 1.4;
 }
 .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
-button, .nav a {
+button {
   border: 2px solid #14181c;
   border-radius: 999px;
   background: #1c242c;

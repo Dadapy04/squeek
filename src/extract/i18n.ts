@@ -32,10 +32,6 @@ export const DICT = {
   'btn.workshop': { id: 'Bengkel', en: 'Workshop' },
   'btn.deploy': { id: 'Berangkat', en: 'Head out' },
   'btn.resume': { id: 'Lanjutkan galian', en: 'Resume delve' },
-  'nav.arena': { id: 'Arena gelombang', en: 'Wave arena' },
-  'nav.rpg': { id: 'RPG', en: 'RPG' },
-  'nav.legacy': { id: 'Extraction lama', en: 'Old extraction' },
-  'wheel.wait': { id: 'Roda: menunggu bacaan. Cadangan hanya bantuan napas, bukan hadiah.', en: 'Wheel: waiting for a reading. Reserves are a breather, not a prize.' },
   'shop.title': { id: 'Bengkel', en: 'Workshop' },
   'shop.close': { id: 'Tutup', en: 'Close' },
   'shop.home': { id: 'Bahan harus sudah dibawa pulang ke Simpanan.', en: 'Materials have to be home in the stash.' },
@@ -302,11 +298,6 @@ export const DICT = {
   'blade.power': { id: 'daya {n}', en: 'power {n}' },
   'reach.starter': { id: 'Pedang dasar Lv1 (daya 24)', en: 'Starter sword Lv1 (power 24)' },
   'reach.chest': { id: '{name} (daya {dmg}) dari peti kedalaman {depth}', en: '{name} (power {dmg}) from the depth {depth} chest' },
-  'wheel.spin': { id: 'Roda berputar. Cadangan bantuan, bukan hadiah.', en: 'Wheel is spinning. Reserves are a breather, not a prize.' },
-  'wheel.rest': { id: 'Roda istirahat. Galian tetap jalan.', en: 'Wheel is resting. The delve keeps going.' },
-  'wheel.none': { id: 'Roda tidak memberi cadangan. Latihan tetap jalan.', en: 'The wheel offers no reserve. Practice still runs.' },
-  'wheel.down': { id: 'Roda tidak terbaca. Latihan tetap jalan.', en: 'Wheel unreadable. Practice still runs.' },
-  'wheel.base': { id: '{text} Cadangan {n}. Bukan token.', en: '{text} Reserve {n}. Not a token.' },
 } as const satisfies Record<string, Row>
 
 export type MsgKey = keyof typeof DICT
