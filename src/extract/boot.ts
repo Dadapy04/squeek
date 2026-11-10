@@ -17,7 +17,7 @@ import { loadExtract, writeExtract } from './save.ts'
 import { ITEM_NAME, RARITY_COLOR, RARITY_NAME, STASH_SLOTS, type CoinRarity, type ItemUnit } from './coins.ts'
 import { bladeDisplay, bossDisplay, depthPlan } from './depths.ts'
 import { currentLocale, onLocale, setLocale, t, type MsgKey } from './i18n.ts'
-import { armRun, mountOnline, noteDeath, noteExtract, noteRunBoundary, offerSessionRestore, refreshOnline, takeRunSeed, walletAct, walletLive, walletSettled } from './online.ts'
+import { armRun, mountOnline, noteDeath, noteExtract, noteRunBoundary, offerSessionRestore, refreshOnline, takeRunEndPermit, takeRunSeed, walletAct, walletLive, walletSettled } from './online.ts'
 import { reportFromRun } from './run-report.ts'
 import { roomAt } from './dungeon.ts'
 import { markSeen, replayTutorial, skipTutorial, tipAnchor, tipToShow, type TipId, type TutorialWorld } from './tutorial.ts'
@@ -1350,7 +1350,7 @@ show(outcome ? 'result' : save.run ? 'field' : 'base')
 mountOnline({
   getSave: () => save,
   setSave: (next) => {
-    if (save.run && !next.run) return
+    if (save.run && !next.run && !takeRunEndPermit()) return
     save = next
     writeExtract(storage, save)
     outcome = null
