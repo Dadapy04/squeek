@@ -51,6 +51,7 @@ import {
   fieldBuy,
   equipBlade,
   equipSpear,
+  findSpear,
   unequipBlade,
   trySwing,
   foeView,
@@ -125,7 +126,7 @@ let stick = { x: 0, y: 0, active: false }
 const tap = { attack: false, dodge: false, interact: false, claim: false, soul: false, use: null as ItemKind | null }
 let blocking = false
 let bringShield = false
-let stashFocus: { kind: ItemKind; coins?: number; spearId?: string; box?: boolean } | null = null
+let stashFocus: { kind: ItemKind; coins?: number; spearId?: string; bladeId?: string; box?: boolean; shield?: boolean } | null = null
 let outcome: 'extracted' | 'dead' | null = null
 type ResultRow = { kind: string; name: string; n: number; value: number; rarity?: CoinRarity; brought: boolean; live?: ItemKind; spear?: Spear }
 let lastResult: { kind: 'extracted' | 'dead'; rows: ResultRow[]; gained: number } | null = null
@@ -1920,8 +1921,16 @@ async function wearWeapon(which: 'sword' | 'spear' | 'blade', id?: string): Prom
     const result = await walletAct('/v1/act/equip', { which, id })
     if (!result.ok) {
       const note = document.querySelector('.inv-detail')
-      if (note) note.append(noteLine(result.reason ?? t('online.offline')))
+      const reason = result.reason === 'missing' && which === 'spear' ? t('stash.spearGone') : (result.reason ?? t('online.offline'))
+      if (note) note.append(noteLine(reason))
+      return
     }
+    stashFocus = save.spear
+      ? { kind: 'tombak', spearId: save.spear.id }
+      : save.blade
+        ? { kind: 'bilah', bladeId: save.blade.id }
+        : { kind: 'sword' }
+    renderBase()
     return
   }
   if (which === 'spear' && id) equipSpear(save, id)
@@ -1957,6 +1966,13 @@ function renderBase(): void {
   const panel = document.createElement('div')
   panel.className = 'inv'
   panel.append(invHead(t('stash.value', { n: total }), t('stash.count', { n: stashUsed(save), max: STASH_SLOTS })))
+  const lead = document.createElement('div')
+  lead.className = 'loadout-lead'
+  const heading = document.createElement('h2')
+  heading.textContent = t('base.loadout')
+  const hint = document.createElement('p')
+  hint.textContent = t('base.carryHint')
+  lead.append(heading, hint)
   const gear = document.createElement('div')
   gear.className = 'inv-gear'
   const weapon = save.spear
@@ -1969,13 +1985,16 @@ function renderBase(): void {
     stashFocus = save.spear
       ? { kind: 'tombak', spearId: save.spear.id }
       : save.blade
-        ? { kind: 'sword' }
+        ? { kind: 'bilah', bladeId: save.blade.id }
         : { kind: 'sword' }
     renderBase()
   })
   const shield = gearSlot('shield', save.shield == null || bringShield ? t('stash.noShield') : t('stash.shield', { n: save.shield, max: shieldMaxFor(save.shieldLevel) }), undefined, 0, true)
-  shield.disabled = save.shield == null || bringShield
-  shield.addEventListener('click', () => { bringShield = true; renderBase() })
+  pressButton(shield, () => {
+    stashFocus = { kind: 'sword', shield: true }
+    if (save.shield != null) bringShield = true
+    renderBase()
+  })
   const cover = insuranceButton(save.insured, () => { stashFocus = save.insured ? { kind: save.insured.kind, coins: save.insured.unit?.coins, spearId: save.insured.spear?.id, box: true } : null; renderBase() })
   if (stashFocus?.box) cover.classList.add('on')
   gear.append(weapon, shield, cover)
@@ -2002,7 +2021,7 @@ function renderBase(): void {
   const main = document.createElement('div')
   main.className = 'inv-main'
   main.append(grid, side)
-  panel.append(gear, main)
+  panel.append(lead, gear, main)
   stashEl.append(panel)
   if (bringShield && save.shield != null) trayEl.append(chip(t('loadout.shield', { n: save.shield }), () => { bringShield = false }, 'shield'))
   if (save.spear) {
@@ -2034,10 +2053,11 @@ function stashGroups(): { groups: InvGroup[]; used: number } {
     used += 1
     groups.push({ kind: 'tombak', name: t('spear.named', { rarity: RARITY_NAME[spear.rarity] }), rarity: spear.rarity, coins: spear.coins ?? 0, qty: 1, spearId: spear.id, origin: spear.origin })
   }
-  if ((save.spear || save.blade) && count(save.stash, 'sword') - count(picks, 'sword') > 0) {
-    groups.unshift({ kind: 'sword', name: ITEM_NAME.sword, coins: 0, qty: count(save.stash, 'sword') - count(picks, 'sword') })
-  }
   groups.sort((a, b) => b.coins - a.coins || a.name.localeCompare(b.name))
+  const spareSword = count(save.stash, 'sword') - count(picks, 'sword')
+  if ((save.spear || save.blade) && spareSword > 0) {
+    groups.unshift({ kind: 'sword', name: ITEM_NAME.sword, coins: 0, qty: spareSword })
+  }
   return { groups, used }
 }
 
@@ -2066,20 +2086,37 @@ function stashDetail(): HTMLElement {
     box.textContent = t('stash.pick')
     return box
   }
+  if (focus.shield) {
+    box.innerHTML = `<b>${t('item.shield')}</b><p>${save.shield == null ? t('stash.noShield') : t('stash.shield', { n: save.shield, max: shieldMaxFor(save.shieldLevel) })}</p>`
+    return box
+  }
+  if (focus.bladeId && save.blade?.id === focus.bladeId) {
+    box.innerHTML = `<b>${bladeDisplay(save.blade.id, save.blade.name)}</b><p>${t('blade.power', { n: save.blade.damage })}</p>`
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'primary'
+    button.textContent = t('stash.unequip', { name: bladeDisplay(save.blade.id, save.blade.name), dmg: save.blade.damage })
+    pressButton(button, () => { void wearWeapon('sword') })
+    box.append(actionsOf(button))
+    return box
+  }
   if (focus.spearId) {
-    const spear = save.spears.find((item) => item.id === focus.spearId)
+    const spear = findSpear(save, focus.spearId)
     if (!spear) {
-      box.textContent = 'Tombak tidak ada.'
+      box.textContent = t('stash.spearGone')
       return box
     }
+    const worn = save.spear?.id === spear.id
     const color = RARITY_COLOR[spear.rarity]
     box.innerHTML = `<b>${spearLabel(spear)}</b><p style="color:${color}">${RARITY_NAME[spear.rarity]} · ${spear.coins ?? 0} ${t('coin.word')}</p><p>${spearStatLine(spear)}</p>`
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'primary'
-    button.textContent = t('stash.equip')
-    pressButton(button, () => { void wearWeapon('spear', spear.id) })
-    box.append(button, sellButtons(box, 'tombak', spear.coins, spear.id, spear.rarity), insureStashButton('tombak', spear.coins, spear.id))
+    button.textContent = worn ? t('stash.unequipSpear') : t('stash.equip')
+    pressButton(button, () => { void wearWeapon(worn ? 'sword' : 'spear', worn ? undefined : spear.id) })
+    const actions = actionsOf(button)
+    if (!worn) actions.append(sellButtons(box, 'tombak', spear.coins, spear.id, spear.rarity), insureStashButton('tombak', spear.coins, spear.id))
+    box.append(actions)
     return box
   }
   const name = ITEM_NAME[focus.kind]
@@ -2088,6 +2125,8 @@ function stashDetail(): HTMLElement {
   const priced = unit && focus.kind !== 'sword'
   const price = priced && unit ? `<p style="color:${color}">${RARITY_NAME[unit.rarity]} · ${unit.coins} ${t('coin.word')}</p>` : ''
   box.innerHTML = `<b>${name}</b>${price}<p>${bagUse(focus.kind)}</p>`
+  const actions = document.createElement('div')
+  actions.className = 'inv-actions'
   if (focus.kind === 'sword') {
     const button = document.createElement('button')
     button.type = 'button'
@@ -2095,17 +2134,25 @@ function stashDetail(): HTMLElement {
     button.textContent = save.spear || save.blade ? t('stash.equip') : (count(picks, 'sword') > 0 ? t('stash.worn') : t('stash.equip'))
     if (!(save.spear || save.blade) && count(picks, 'sword') > 0) button.disabled = true
     pressButton(button, () => { void wearWeapon('sword') })
-    box.append(button)
+    actions.append(button)
   } else if (count(save.stash, focus.kind) - count(picks, focus.kind) > 0) {
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'primary'
     button.textContent = t('stash.take')
     pressButton(button, () => { takePick(focus.kind); renderBase() })
-    box.append(button)
+    actions.append(button)
   }
-  if (focus.kind !== 'sword' && unit) box.append(sellButtons(box, focus.kind, unit.coins, undefined, unit.rarity), insureStashButton(focus.kind, unit.coins))
+  if (focus.kind !== 'sword' && unit) actions.append(sellButtons(box, focus.kind, unit.coins, undefined, unit.rarity), insureStashButton(focus.kind, unit.coins))
+  if (actions.childElementCount > 0) box.append(actions)
   return box
+}
+
+function actionsOf(button: HTMLButtonElement): HTMLElement {
+  const actions = document.createElement('div')
+  actions.className = 'inv-actions'
+  actions.append(button)
+  return actions
 }
 
 function noteLine(text: string): HTMLElement {

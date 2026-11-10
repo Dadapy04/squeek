@@ -198,6 +198,9 @@ button { cursor: pointer; }
   pointer-events: none;
   text-align: center;
 }
+#carryHint, #loadoutTitle { display: none; }
+.loadout-lead h2 { margin: 2px 0; font-size: 16px; color: #f6ecd8; }
+.loadout-lead p { margin: 0 0 6px; line-height: 1.3; color: #c4b8a4; }
 #carryHint { margin: 8px 0 0; line-height: 1.35; }
 #loadout { display: block; }
 #result {
@@ -872,9 +875,24 @@ button.danger { background: #6e2420; color: #fff6f2; border-color: #a14a42; }
 @media (orientation: landscape) and (max-height: 520px) {
   #loadout { display: block; }
   .inv-main { display: flex; flex-direction: column; width: 100%; }
-  .inv-detail { order: -1; }
-  .inv-detail .primary { min-height: 40px; font-size: 14px; }
-  #bagDetail .row button, .inv-detail button { min-height: 32px; padding: 3px 8px; font-size: 12px; }
+  .inv-detail {
+    order: -1;
+    height: 40px;
+    max-height: 40px;
+    overflow: hidden;
+    box-sizing: border-box;
+    padding: 4px 6px;
+  }
+  .inv-detail > div { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 6px; height: 100%; overflow: hidden; }
+  .inv-detail b, .inv-detail p { margin: 0; font-size: 11px; line-height: 1.15; white-space: nowrap; }
+  .inv-detail b { flex: 0 0 auto; }
+  .inv-detail p { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .inv-detail p + p { display: none; }
+  .inv-detail .inv-actions { display: flex; flex: 1 1 auto; gap: 4px; min-width: 0; margin-left: auto; }
+  .inv-detail .primary { min-height: 0; height: 28px; font-size: 12px; }
+  #bagDetail .row button, .inv-detail button { min-height: 0; height: 28px; width: auto; margin: 0; padding: 2px 8px; font-size: 12px; flex: 1 1 0; }
+  .loadout-lead h2 { margin: 0 0 2px; font-size: 13px; }
+  .loadout-lead p { margin: 0 0 4px; font-size: 11px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .stash-total { margin: 4px 0; padding: 4px 8px; font-size: 14px; }
   .inv-grid { grid-template-columns: repeat(auto-fill, 64px); gap: 4px; }
   .inv-slot, .inv-gear .inv-slot { width: 64px; flex-basis: 64px; }

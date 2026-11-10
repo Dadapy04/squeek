@@ -905,6 +905,11 @@ export function migrateOneWeapon(save: ExtractSave): void {
   }
 }
 
+export function findSpear(save: ExtractSave, id: string): Spear | null {
+  if (save.spear?.id === id) return save.spear
+  return save.spears.find((item) => item.id === id) ?? null
+}
+
 export function equipSpear(save: ExtractSave, id: string): boolean {
   if (save.run) return false
   const spear = save.spears.find((item) => item.id === id)

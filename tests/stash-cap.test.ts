@@ -61,5 +61,8 @@ describe('stash cap', () => {
     expect(css).toContain('grid-template-columns: repeat(auto-fill, 64px)')
     expect(css).not.toContain('minmax(58px, 1fr)')
     expect(css).toContain('.inv-gear { display: flex; flex-wrap: wrap;')
+    expect(css).toContain('height: 40px;')
+    expect(css).toContain('.inv-detail .inv-actions { display: flex;')
+    expect(css).toContain('#carryHint, #loadoutTitle { display: none; }')
   })
 })

@@ -223,6 +223,7 @@ export const DICT = {
   'stash.equip': { id: 'Pakai', en: 'Equip' },
   'stash.worn': { id: 'Terpasang di slot senjata.', en: 'In the weapon slot.' },
   'stash.unequip': { id: 'Lepas {name} · daya {dmg}', en: 'Unequip {name} · power {dmg}' },
+  'stash.unequipSpear': { id: 'Lepas tombak', en: 'Unequip spear' },
   'stash.equipBlade': { id: 'Pasang {name} · daya {dmg}', en: 'Equip {name} · power {dmg}' },
   'stash.sell': { id: 'Jual', en: 'Sell' },
   'stash.sellAsk': { id: 'Jual {name} {rarity} seharga {coins} koin?', en: 'Sell {name} {rarity} for {coins} coins?' },
