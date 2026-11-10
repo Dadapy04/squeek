@@ -221,6 +221,8 @@ export function drawExtract(
     }
   }
   for (const death of deaths) {
+    const owner = run.foes.find((foe) => foe.id === death.id)
+    if (owner && owner.zone !== run.zone) continue
     const gone = 1 - death.life / death.max
     const p = at(death.x, death.y)
     const blink = gone > 0.2 && gone < 0.82
@@ -1622,7 +1624,7 @@ function drawTorches(
   for (const torch of list) {
     const p = at(torch.x, torch.y)
     if (glow && glows < 3) {
-      const size = 34 * scale
+      const size = 22 * scale
       ctx.globalAlpha = 0.85
       ctx.drawImage(glow, Math.round(p.x - size / 2), Math.round(p.y - size / 2), size, size)
       ctx.globalAlpha = 1
