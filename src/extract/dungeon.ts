@@ -57,6 +57,8 @@ export interface PropNode {
   state: 'live' | 'spent' | 'open'
   loot: ItemKind[]
   lock: 'none' | 'key'
+  /** Cracked walls start at 3. Missing means a fresh crack. */
+  hp?: number
 }
 
 export interface SpawnNode {
@@ -375,6 +377,7 @@ function placeProps(rooms: RoomNode[], depth: number, rand: () => number): PropN
         state: 'live',
         loot: [],
         lock: 'none',
+        hp: 3,
       })
     }
   }

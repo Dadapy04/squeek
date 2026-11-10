@@ -1098,7 +1098,33 @@ function drawDungeonDress(
     if (prop.kind === 'chest' && prop.lock === 'key' && prop.state !== 'open') {
       blitMotif(ctx, 'key', at(prop.x + 8, prop.y).x, at(prop.x, prop.y - 10).y, Math.max(1, scale * 0.8))
     }
+    if (prop.kind === 'crack' && prop.state === 'live') {
+      const gone = 3 - (prop.hp ?? 3)
+      const p = at(prop.x, prop.y)
+      ctx.fillStyle = '#1a140f'
+      for (let c = 0; c < gone; c += 1) {
+        ctx.fillRect(Math.round(p.x - 6 * scale + c * 4 * scale), Math.round(p.y - 8 * scale), Math.max(1, scale), Math.round(12 * scale))
+      }
+    }
   }
+  for (const bit of run.bits ?? []) {
+    const p = at(bit.x, bit.y)
+    ctx.globalAlpha = Math.max(0, bit.life / 0.35)
+    ctx.fillStyle = '#c4b8a4'
+    ctx.fillRect(Math.round(p.x), Math.round(p.y), Math.max(1, scale), Math.max(1, scale))
+  }
+  ctx.globalAlpha = 1
+  for (const boom of run.booms ?? []) {
+    const p = at(boom.x, boom.y)
+    const grow = (1 - boom.life / 0.45) * 18 * scale
+    ctx.globalAlpha = Math.max(0, boom.life / 0.45)
+    ctx.strokeStyle = '#e25a2a'
+    ctx.lineWidth = Math.max(2, scale)
+    ctx.strokeRect(Math.round(p.x - 8 * scale - grow), Math.round(p.y - 8 * scale - grow), Math.round(16 * scale + grow * 2), Math.round(16 * scale + grow * 2))
+    ctx.fillStyle = '#ffb020'
+    ctx.fillRect(Math.round(p.x - 3 * scale), Math.round(p.y - 3 * scale), Math.round(6 * scale), Math.round(6 * scale))
+  }
+  ctx.globalAlpha = 1
 }
 
 function placeMarked(

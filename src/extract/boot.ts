@@ -62,6 +62,7 @@ import {
   spendSupport,
   step,
   unequipSpear,
+  usableProp,
   useItem,
   warpFloor,
   type ExtractSave,
@@ -1291,7 +1292,9 @@ function paint(): void {
   mapCanvas.style.top = `${Math.ceil(hudBottom - fieldBox.top) + 4}px`
   const near = runCrates(run).some((crate) => crate.zone === run.zone && !run.opened.includes(crate.id) && Math.hypot(crate.x - run.x, crate.y - run.y) < 28)
   const open = document.querySelector<HTMLButtonElement>('#open')!
-  open.hidden = !near
+  const propNear = usableProp(run)
+  open.hidden = !near && propNear == null
+  if (!open.hidden) open.textContent = t('hud.open')
   const prize = claimTarget(run)
   const shrine = soulNear(run)
   const claim = document.querySelector<HTMLButtonElement>('#claim')!

@@ -161,6 +161,9 @@ export interface Run {
   roomClock?: number
   /** 1 while the current room event is darkness. Not stored. */
   gloom?: number
+  /** Chip debris and barrel bursts. Not stored. */
+  bits?: { x: number; y: number; vx: number; vy: number; life: number }[]
+  booms?: { x: number; y: number; life: number }[]
 }
 
 export interface ExtractSave {
@@ -983,6 +986,7 @@ function keepInsured(save: ExtractSave, run: Run): void {
 }
 
 function float(run: Run, text: string, dim = false): void {
+  if (text === t('room.shut') && run.floats.some((item) => item.text === text && item.life > 0.35)) return
   run.floats.push({ text, life: 0.8, dim })
   run.floats = run.floats.slice(-6)
 }
@@ -1126,7 +1130,8 @@ function connectSwing(run: Run, from: number, to: number): void {
     if (foe.hp <= 0) slayFoe(run, foe)
   }
   strikeVeins(run)
-  strikeBarrels(run)
+  strikeBarrels(run, lo, hi)
+  strikeCracks(run, lo, hi)
 }
 
 function connectThrust(run: Run, from: number, to: number): void {
@@ -1165,7 +1170,8 @@ function connectThrust(run: Run, from: number, to: number): void {
     if (foe.hp <= 0) slayFoe(run, foe)
   }
   strikeVeins(run)
-  strikeBarrels(run)
+  strikeBarrels(run, -SPEAR_ARC, SPEAR_ARC)
+  strikeCracks(run, -SPEAR_ARC, SPEAR_ARC)
 }
 
 function isKelabang(foe: Foe): boolean {
@@ -2184,6 +2190,18 @@ function standingInExtract(run: Run): boolean {
 }
 
 function tickDungeon(run: Run, dt: number): void {
+  if (run.bits) {
+    for (const bit of run.bits) {
+      bit.life -= dt
+      bit.x += bit.vx * dt
+      bit.y += bit.vy * dt
+    }
+    run.bits = run.bits.filter((bit) => bit.life > 0)
+  }
+  if (run.booms) {
+    for (const boom of run.booms) boom.life -= dt
+    run.booms = run.booms.filter((boom) => boom.life > 0)
+  }
   ensureChart(run)
   const chart = run.chart
   if (!chart) return
@@ -2293,7 +2311,7 @@ function tryDoor(run: Run, room: RoomNode): void {
     }
     if (!nearPad(run.x, run.y, door.dir)) continue
     if (!doorAllowed(run, room, door)) {
-      float(run, t('room.shut'))
+      if (!crackInReach(run)) float(run, t('room.shut'))
       const pad = doorPad(door.dir)
       run.x += Math.sign(run.x - pad.x) || (door.dir === 'w' ? 1 : door.dir === 'e' ? -1 : 0)
       run.y += door.dir === 'n' ? 8 : door.dir === 's' ? -8 : 0
@@ -2364,21 +2382,46 @@ export function miningNoise(run: Run, x: number, y: number): number {
   return pulled
 }
 
-function strikeBarrels(run: Run): void {
+const BARREL_R = 10
+
+function slashHits(run: Run, x: number, y: number, radius: number, lo: number, hi: number): boolean {
+  const dx = x - run.x
+  const dy = y - run.y
+  const dist = Math.hypot(dx, dy)
+  if (dist - radius > SWING_REACH) return false
+  const sample = Math.atan2(Math.sin(Math.atan2(dy, dx) - run.facing), Math.cos(Math.atan2(dy, dx) - run.facing))
+  if (dist <= radius + 8) return Math.abs(sample) <= Math.PI / 2
+  return sample >= lo && sample <= hi && Math.abs(sample) <= Math.PI / 2 + 0.05
+}
+
+function strikeBarrels(run: Run, lo: number, hi: number): void {
   const chart = run.chart
   if (!chart) return
   for (const prop of chart.props) {
     if (prop.kind !== 'barrel' || prop.state !== 'live' || prop.room !== run.roomId) continue
     if (run.swingHit.includes(prop.id)) continue
-    if (Math.hypot(prop.x - run.x, prop.y - run.y) > SWING_REACH) continue
+    if (!slashHits(run, prop.x, prop.y, BARREL_R, lo, hi)) continue
     run.swingHit.push(prop.id)
     blowBarrel(run, prop)
+  }
+}
+
+function strikeCracks(run: Run, lo: number, hi: number): void {
+  const chart = run.chart
+  if (!chart) return
+  for (const prop of chart.props) {
+    if (prop.kind !== 'crack' || prop.state !== 'live' || prop.room !== run.roomId) continue
+    if (run.swingHit.includes(prop.id)) continue
+    if (!slashHits(run, prop.x, prop.y, 8, lo, hi)) continue
+    run.swingHit.push(prop.id)
+    chipCrack(run, prop)
   }
 }
 
 function blowBarrel(run: Run, prop: PropNode): void {
   prop.state = 'spent'
   float(run, t('room.boom'))
+  run.booms = [...(run.booms ?? []), { x: prop.x, y: prop.y, life: 0.45 }]
   hurtPlayer(run, 18, prop.x, prop.y)
   for (const foe of run.foes) {
     if (foe.zone !== run.zone || foe.hp <= 0 || run.slain.includes(foe.id)) continue
@@ -2390,11 +2433,59 @@ function blowBarrel(run: Run, prop: PropNode): void {
   }
 }
 
+export const PROP_REACH = 52
+
+export function usableProp(run: Run): PropNode | null {
+  const chart = run.chart
+  if (!chart) return null
+  let best: PropNode | null = null
+  let bestD = PROP_REACH
+  for (const prop of chart.props) {
+    if (prop.room !== run.roomId || prop.state === 'spent') continue
+    if (prop.kind === 'crack' && prop.state === 'open') continue
+    if (prop.kind === 'chest' && prop.state === 'open') continue
+    if (prop.kind === 'puddle' || prop.kind === 'lava' || prop.kind === 'web' || prop.kind === 'debris' || prop.kind === 'thorn') continue
+    const dist = Math.hypot(prop.x - run.x, prop.y - run.y)
+    if (dist < bestD) {
+      best = prop
+      bestD = dist
+    }
+  }
+  return best
+}
+
+function crackInReach(run: Run): boolean {
+  return !!run.chart?.props.some((prop) => prop.kind === 'crack' && prop.room === run.roomId && prop.state === 'live' && Math.hypot(prop.x - run.x, prop.y - run.y) < PROP_REACH + 8)
+}
+
+function chipCrack(run: Run, prop: PropNode): void {
+  const left = prop.hp ?? 3
+  if (left <= 0 || prop.state === 'open') return
+  prop.hp = left - 1
+  miningNoise(run, prop.x, prop.y)
+  const bits = run.bits ?? []
+  for (let i = 0; i < 5; i += 1) {
+    const ang = (i / 5) * Math.PI * 2
+    bits.push({ x: prop.x, y: prop.y, vx: Math.cos(ang) * 36, vy: Math.sin(ang) * 28, life: 0.35 })
+  }
+  run.bits = bits.slice(-24)
+  if ((prop.hp ?? 0) > 0) {
+    float(run, t('prop.chip', { n: 3 - (prop.hp ?? 0) }))
+    return
+  }
+  const room = run.chart ? roomAt(run.chart, run.roomId) : null
+  const door = room?.doors.find((item) => item.lock === 'secret')
+  if (door) run.flags = [...(run.flags ?? []), `secret:${door.to}`]
+  prop.state = 'open'
+  prop.hp = 0
+  float(run, t('room.crack'))
+}
+
 function useProps(run: Run): boolean {
   const chart = run.chart
   if (!chart) return false
-  const prop = chart.props.find((item) => item.room === run.roomId && item.state === 'live' && Math.hypot(item.x - run.x, item.y - run.y) < 28)
-  if (!prop) return false
+  const prop = usableProp(run)
+  if (!prop || prop.state !== 'live') return false
   if (prop.kind === 'shrine') {
     if (run.flags?.includes(`rest:${prop.id}`)) {
       float(run, t('room.dry'))
@@ -2407,11 +2498,7 @@ function useProps(run: Run): boolean {
     return true
   }
   if (prop.kind === 'crack') {
-    const room = roomAt(chart, run.roomId)
-    const door = room?.doors.find((item) => item.lock === 'secret')
-    if (door) run.flags = [...(run.flags ?? []), `secret:${door.to}`]
-    prop.state = 'open'
-    float(run, t('room.crack'))
+    chipCrack(run, prop)
     return true
   }
   if (prop.kind === 'lever') {
@@ -2466,7 +2553,7 @@ export const FIELD_PRICE = { bandage: 40, tonic: 32 } as const
 export function fieldBuy(save: ExtractSave, kind: 'bandage' | 'tonic'): string {
   const run = save.run
   if (!run?.chart) return ''
-  const vendor = run.chart.props.find((item) => item.kind === 'vendor' && item.room === run.roomId && item.state === 'live' && Math.hypot(item.x - run.x, item.y - run.y) < 32)
+  const vendor = run.chart.props.find((item) => item.kind === 'vendor' && item.room === run.roomId && item.state === 'live' && Math.hypot(item.x - run.x, item.y - run.y) < PROP_REACH)
   if (!vendor) return ''
   const price = FIELD_PRICE[kind]
   if (save.coins < price) return t('shop.poor')

@@ -340,6 +340,8 @@ export const DICT = {
   'theme.web': { id: 'Sarang jaring', en: 'Web nest' },
   'theme.maw': { id: 'Jurang mulut', en: 'Mine abyss' },
   'prop.barrel': { id: 'Gentong', en: 'Barrel' },
+  'prop.blast': { id: 'Tong peledak', en: 'Explosive barrel' },
+  'prop.chip': { id: 'Retak {n}/3', en: 'Crack {n}/3' },
   'prop.crate': { id: 'Peti kayu', en: 'Wood crate' },
   'prop.chest': { id: 'Peti terkunci', en: 'Locked chest' },
   'prop.open': { id: 'Peti terbuka', en: 'Open chest' },

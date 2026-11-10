@@ -74,11 +74,11 @@ const chestOpen = motif([
 const barrel = motif([
   '....kkkkkk....',
   '...krrrrrrk...',
-  '..krrdrrdrrk..',
+  '..kryyryyryk..',
   '..krrrrrrrrk..',
   '..kkkkkkkkkk..',
   '..krrrrrrrrk..',
-  '..krrdrrdrrk..',
+  '..kryyryyryk..',
   '...krrrrrrk...',
   '....kkkkkk....',
 ])
@@ -309,7 +309,7 @@ const LABELS: Record<string, MsgKey> = {
   vendor: 'map.seller',
   chest: 'prop.chest',
   'chest-open': 'prop.open',
-  barrel: 'prop.barrel',
+  barrel: 'prop.blast',
   crate: 'prop.crate',
   lever: 'prop.lever',
   crack: 'prop.crack',

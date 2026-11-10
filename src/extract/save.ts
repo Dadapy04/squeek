@@ -186,6 +186,7 @@ function chartOf(raw: Partial<Run>, depth: number, seed: number): FloorChart {
       const hit = saved.props.find((item) => item && item.id === prop.id)
       if (!hit) continue
       if (hit.state === 'spent' || hit.state === 'open' || hit.state === 'live') prop.state = hit.state
+      if (typeof hit.hp === 'number' && Number.isFinite(hit.hp)) prop.hp = Math.max(0, Math.min(3, Math.floor(hit.hp)))
     }
   }
   return chart

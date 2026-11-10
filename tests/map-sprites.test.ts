@@ -52,7 +52,7 @@ describe('map prop sprites', () => {
     setLocale('id')
     expect(mapLabel('vendor')).toBe('Penjual')
     expect(mapLabel('vein', 'copper')).toBe('Tembaga')
-    expect(mapLabel('barrel')).toBe('Gentong')
+    expect(mapLabel('barrel')).toBe('Tong peledak')
     setLocale('en')
   })
 })
