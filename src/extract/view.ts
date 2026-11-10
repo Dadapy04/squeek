@@ -6,7 +6,7 @@ import { drawHero, drawMaw, drawWing } from './pose.ts'
 import { spearReach, spearRgb } from './spear.ts'
 import { bossDisplay, bossPattern, depthPlan, foeName, lineup, type AttackKind } from './depths.ts'
 import { t } from './i18n.ts'
-import { doorPad, roomAt } from './dungeon.ts'
+import { doorPad, nextExitDoor, onDoor, roomAt, type Dir } from './dungeon.ts'
 import { drawThemeMotes, paintThemePlate, themeKit } from './tilesets.ts'
 import { foeCanvas, hasFoeSprite } from './foe-sprites.ts'
 import { blitMotif, interactable, mapLabel, spriteIdFor } from './map-sprites.ts'
@@ -184,7 +184,8 @@ export function drawExtract(
   tickEffects(run)
   drawEffects(ctx, at, scale)
   const here = run.chart ? roomAt(run.chart, run.roomId) : null
-  if (run.zone === 'pangkalan' || here?.role === 'extract' || here?.role === 'fast') drawCircle(ctx, at, scale, run.age)
+  if (here?.role === 'extract' || here?.role === 'fast') drawCircle(ctx, at, scale, run.age)
+  else drawWayfinder(ctx, run, scale, at)
   if (run.gloom) {
     ctx.fillStyle = 'rgba(4, 6, 10, 0.55)'
     ctx.fillRect(0, 0, width, height)
@@ -773,13 +774,18 @@ function drawMineDressing(
     : run.zone === 'tambang'
       ? [[-96, -40, 18, 20], [90, 20, 16, 18], [-70, 50, 20, 12], [55, -30, 14, 16], [-30, -90, 16, 12], [20, 80, 12, 14]]
       : [[-90, -40, 16, 24], [70, -20, 14, 20], [-60, 40, 18, 14], [50, 60, 16, 18], [-20, -80, 12, 16], [10, 20, 20, 10]]
-  if (dressed) for (const [x, y, w, h] of rocks) rock(ctx, at, scale, x, y, w, h)
+  const room = run.chart ? roomAt(run.chart, run.roomId) : null
+  const blocked = (x: number, y: number) => room != null && onDoor(room, x, y)
+  if (dressed) for (const [x, y, w, h] of rocks) {
+    if (blocked(x + w / 2, y + h / 2)) continue
+    rock(ctx, at, scale, x, y, w, h)
+  }
   if (dressed) for (let i = 0, x = -ZONE_W / 2 + 8; x < ZONE_W / 2; i += 1, x += 36) {
     if (i % 4 === 0) continue
     const northOpen = run.zone === 'sarang' && Math.abs(x) < NEST_DOOR + 16
     const southOpen = run.zone === 'reruntuhan' && Math.abs(x + 6) < NEST_DOOR + 16
-    if (!northOpen) rock(ctx, at, scale, x, -ZONE_H / 2 + 4, 8 + (i % 3) * 4, 7 + (i % 2) * 4)
-    if (!southOpen) rock(ctx, at, scale, x + 6, ZONE_H / 2 - 14 - (i % 3) * 2, 9 + (i % 2) * 3, 6 + (i % 3) * 2)
+    if (!northOpen && !blocked(x, -ZONE_H / 2 + 4)) rock(ctx, at, scale, x, -ZONE_H / 2 + 4, 8 + (i % 3) * 4, 7 + (i % 2) * 4)
+    if (!southOpen && !blocked(x + 6, ZONE_H / 2 - 14)) rock(ctx, at, scale, x + 6, ZONE_H / 2 - 14 - (i % 3) * 2, 9 + (i % 2) * 3, 6 + (i % 3) * 2)
   }
   if (run.zone === 'reruntuhan' || run.zone === 'sarang') {
     const lip = run.zone === 'reruntuhan' ? ZONE_H / 2 - 12 : -ZONE_H / 2 + 2
@@ -793,8 +799,8 @@ function drawMineDressing(
   }
   if (dressed) for (let i = 0, y = -ZONE_H / 2 + 30; y < ZONE_H / 2 - 10; i += 1, y += 42) {
     if (i % 3 === 1) continue
-    rock(ctx, at, scale, -ZONE_W / 2 + 2, y, 8 + (i % 2) * 4, 10 + (i % 3) * 3)
-    rock(ctx, at, scale, ZONE_W / 2 - 14, y + 6, 10, 8 + (i % 3) * 4)
+    if (!blocked(-ZONE_W / 2 + 2, y)) rock(ctx, at, scale, -ZONE_W / 2 + 2, y, 8 + (i % 2) * 4, 10 + (i % 3) * 3)
+    if (!blocked(ZONE_W / 2 - 14, y + 6)) rock(ctx, at, scale, ZONE_W / 2 - 14, y + 6, 10, 8 + (i % 3) * 4)
   }
   if (!dressed) {
     /* deeper floors keep the baked tileset clear of the burrow clutter */
@@ -1461,6 +1467,7 @@ function drawFloor(
   const plate = roomPlate(run.depth || 1, scale)
   if (plate) ctx.drawImage(plate, Math.floor(left.x), Math.floor(left.y))
   strokeRoom(ctx, left.x, left.y, ZONE_W * scale, ZONE_H * scale, nestGap(run.zone), at(-NEST_DOOR, 0).x - left.x, at(NEST_DOOR, 0).x - left.x, themeKit(run.depth || 1).wallTop)
+  drawDoorways(ctx, run, scale, at)
 }
 
 function strokeRoom(
@@ -1546,34 +1553,82 @@ function drawCircle(ctx: CanvasRenderingContext2D, at: (x: number, y: number) =>
   ctx.arc(p.x, p.y, r, 0, Math.PI * 2)
   ctx.stroke()
   ctx.restore()
-  drawExitSign(ctx, p.x + r + 36 * scale, p.y - 6 * scale, scale)
 }
 
-function drawExitSign(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number): void {
-  const w = 54 * scale
-  const h = 22 * scale
-  const left = Math.round(x - w / 2)
-  const top = Math.round(y - h / 2)
-  ctx.fillStyle = '#102818'
-  ctx.fillRect(left - 2, top - 2, Math.round(w) + 4, Math.round(h) + 4)
-  ctx.fillStyle = '#1f8a3a'
-  ctx.fillRect(left, top, Math.round(w), Math.round(h))
-  ctx.fillStyle = '#e9ffe8'
+function inward(dir: Dir, pad: { x: number; y: number }, dist: number): { x: number; y: number } {
+  if (dir === 'n') return { x: pad.x, y: pad.y + dist }
+  if (dir === 's') return { x: pad.x, y: pad.y - dist }
+  if (dir === 'w') return { x: pad.x + dist, y: pad.y }
+  return { x: pad.x - dist, y: pad.y }
+}
+
+function drawDoorways(
+  ctx: CanvasRenderingContext2D,
+  run: Run,
+  scale: number,
+  at: (x: number, y: number) => { x: number; y: number },
+): void {
+  const room = run.chart ? roomAt(run.chart, run.roomId) : null
+  if (!room) return
+  const kit = themeKit(run.depth || 1)
+  for (const door of room.doors) {
+    const pad = doorPad(door.dir)
+    const p = at(pad.x, pad.y)
+    const wide = (door.dir === 'n' || door.dir === 's')
+    const span = 44 * scale
+    const thick = 18 * scale
+    const left = Math.round(p.x - (wide ? span / 2 : thick / 2))
+    const top = Math.round(p.y - (wide ? thick / 2 : span / 2))
+    ctx.fillStyle = kit.floor
+    ctx.fillRect(left, top, Math.round(wide ? span : thick), Math.round(wide ? thick : span))
+    ctx.fillStyle = kit.trim
+    const post = Math.max(2, Math.round(3 * scale))
+    if (wide) {
+      ctx.fillRect(left, top, post, Math.round(thick))
+      ctx.fillRect(left + Math.round(span) - post, top, post, Math.round(thick))
+      ctx.fillStyle = kit.wallTop
+      ctx.fillRect(left, door.dir === 'n' ? top : top + Math.round(thick) - post, Math.round(span), post)
+    } else {
+      ctx.fillRect(left, top, Math.round(thick), post)
+      ctx.fillRect(left, top + Math.round(span) - post, Math.round(thick), post)
+      ctx.fillStyle = kit.wallTop
+      ctx.fillRect(door.dir === 'w' ? left : left + Math.round(thick) - post, top, post, Math.round(span))
+    }
+  }
+}
+
+function drawWayfinder(
+  ctx: CanvasRenderingContext2D,
+  run: Run,
+  scale: number,
+  at: (x: number, y: number) => { x: number; y: number },
+): void {
+  const chart = run.chart
+  if (!chart) return
+  const step = nextExitDoor(chart, run.roomId ?? '')
+  if (!step) return
+  const spot = inward(step.dir, doorPad(step.dir), 46)
+  const p = at(spot.x, spot.y)
+  const blink = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(run.age * 6))
+  ctx.save()
+  ctx.globalAlpha = blink
+  ctx.translate(Math.round(p.x), Math.round(p.y))
+  const turn = step.dir === 'e' ? 0 : step.dir === 's' ? Math.PI / 2 : step.dir === 'w' ? Math.PI : -Math.PI / 2
+  ctx.rotate(turn)
   const s = Math.max(1, scale)
-  const fx = left + 4 * s
-  const fy = top + 4 * s
-  ctx.fillRect(fx + 2 * s, fy, s, 2 * s)
-  ctx.fillRect(fx + s, fy + 2 * s, 3 * s, s)
-  ctx.fillRect(fx + 2 * s, fy + 3 * s, s, 3 * s)
-  ctx.fillRect(fx, fy + 4 * s, s, s)
-  ctx.fillRect(fx + 4 * s, fy + 4 * s, s, s)
-  ctx.fillRect(fx + s, fy + 6 * s, s, 3 * s)
-  ctx.fillRect(fx + 3 * s, fy + 6 * s, s, 3 * s)
-  ctx.fillRect(fx, fy + 5 * s, 2 * s, s)
+  ctx.fillStyle = '#102818'
+  ctx.fillRect(Math.round(-28 * s), Math.round(-12 * s), Math.round(56 * s), Math.round(24 * s))
+  ctx.fillStyle = '#1f8a3a'
+  ctx.fillRect(Math.round(-26 * s), Math.round(-10 * s), Math.round(52 * s), Math.round(20 * s))
+  ctx.fillStyle = '#e9ffe8'
   ctx.font = `bold ${Math.max(10, Math.round(8 * scale))}px Courier New, monospace`
   ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText(t('exit.sign'), fx + 8 * s, top + h / 2)
+  ctx.fillText(t('exit.sign'), Math.round(-22 * s), 0)
+  ctx.fillRect(Math.round(16 * s), Math.round(-3 * s), Math.round(4 * s), Math.round(6 * s))
+  ctx.fillRect(Math.round(20 * s), Math.round(-2 * s), Math.round(4 * s), Math.round(4 * s))
+  ctx.fillRect(Math.round(24 * s), Math.round(-1 * s), Math.round(3 * s), Math.round(2 * s))
+  ctx.restore()
 }
 
 function drawKillSlash(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number, facing: number, t: number): void {

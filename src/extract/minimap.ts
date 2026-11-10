@@ -233,6 +233,13 @@ function drawChart(ctx: CanvasRenderingContext2D, run: Run, chart: FloorChart, w
     ctx.strokeStyle = room.id === run.roomId ? '#f2c04a' : paint.trim
     ctx.strokeRect(p.x + 0.5, p.y + 0.5, cell - 1, cell - 1)
     if (!known) continue
+    ctx.fillStyle = '#c4a15a'
+    for (const door of room.doors) {
+      const wide = door.dir === 'n' || door.dir === 's'
+      const ox = door.dir === 'e' ? cell - 1 : door.dir === 'w' ? -gap : cell / 2 - 1
+      const oy = door.dir === 's' ? cell - 1 : door.dir === 'n' ? -gap : cell / 2 - 1
+      ctx.fillRect(p.x + ox, p.y + oy, wide ? 3 : gap + 2, wide ? gap + 2 : 3)
+    }
     const icon = room.role === 'boss' ? '#e10600' : room.role === 'extract' || room.role === 'fast' || room.role === 'start' ? '#40dc60' : room.role === 'merchant' ? '#f2c04a' : room.role === 'rest' ? '#7ec8c4' : room.role === 'secret' ? '#d5dee6' : ''
     if (!icon) continue
     ctx.fillStyle = icon

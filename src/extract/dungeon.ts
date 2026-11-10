@@ -273,7 +273,8 @@ export function placeTorches(rooms: RoomNode[], depth: number, seed: number): To
           : wall === 'w'
             ? { x: -ROOM_W / 2 + 14, y: Math.round(along * 0.7) }
             : { x: ROOM_W / 2 - 18, y: Math.round(along * 0.7) }
-      torches.push({ id: `torch-${room.id}-${wall}`, room: room.id, zone: room.zone, x: spot.x, y: spot.y, wall })
+      const clear = shiftOffDoor(room, spot.x, spot.y)
+      torches.push({ id: `torch-${room.id}-${wall}`, room: room.id, zone: room.zone, x: clear.x, y: clear.y, wall })
     }
   }
   return torches
@@ -350,12 +351,13 @@ function placeVeins(rooms: RoomNode[], depth: number, salt: number, rand: () => 
     const spot = spots[i % spots.length]!
     const rolled = oreRoll(depth, salt + i * 13, false)
     const max = 4
+    const clear = shiftOffDoor(room, spot[0]!, spot[1]!)
     veins.push({
       id: `vein-${room.id}-${i}`,
       room: room.id,
       zone: room.zone,
-      x: spot[0]!,
-      y: spot[1]!,
+      x: clear.x,
+      y: clear.y,
       hp: max,
       max,
       rarity: rolled.rarity,
@@ -381,6 +383,13 @@ function placeVeins(rooms: RoomNode[], depth: number, salt: number, rand: () => 
       })
     }
   }
+  for (const vein of veins) {
+    const room = rooms.find((entry) => entry.id === vein.room)
+    if (!room) continue
+    const spot = shiftOffDoor(room, vein.x, vein.y)
+    vein.x = spot.x
+    vein.y = spot.y
+  }
   return veins
 }
 
@@ -405,14 +414,15 @@ function placeProps(rooms: RoomNode[], depth: number, rand: () => number): PropN
     }
     if (room.role === 'trap' || room.event === 'collapse') {
       const kind = depth === 3 ? 'puddle' : depth === 4 ? 'thorn' : depth === 5 ? 'lava' : depth >= 6 ? 'web' : 'debris'
-      props.push(prop(room, kind, Math.round((rand() - 0.5) * 60), 16 + Math.round(rand() * 40), []))
+      const spot = shiftOffDoor(room, Math.round((rand() - 0.5) * 60), 16 + Math.round(rand() * 40))
+      props.push(prop(room, kind, spot.x, spot.y, []))
     }
     if (room.doors.some((door) => door.lock === 'timed')) props.push(prop(room, 'lever', -30, -20, []))
     for (const door of room.doors) {
       if (door.lock !== 'secret') continue
       const pad = doorPad(door.dir)
-      const toward = door.dir === 'n' ? 28 : door.dir === 's' ? -28 : 0
-      const aside = door.dir === 'w' ? 28 : door.dir === 'e' ? -28 : 0
+      const toward = door.dir === 'n' ? 56 : door.dir === 's' ? -56 : 0
+      const aside = door.dir === 'w' ? 56 : door.dir === 'e' ? -56 : 0
       props.push({
         id: `crack-${room.id}-${door.dir}`,
         room: room.id,
@@ -426,6 +436,14 @@ function placeProps(rooms: RoomNode[], depth: number, rand: () => number): PropN
         hp: 3,
       })
     }
+  }
+  for (const item of props) {
+    if (item.kind === 'crack') continue
+    const room = rooms.find((entry) => entry.id === item.room)
+    if (!room) continue
+    const spot = shiftOffDoor(room, item.x, item.y)
+    item.x = spot.x
+    item.y = spot.y
   }
   return props
 }
@@ -473,6 +491,13 @@ function placeSpawns(rooms: RoomNode[], depth: number, rand: () => number): Spaw
         elite,
       })
     }
+  }
+  for (const spawn of spawns) {
+    const room = rooms.find((entry) => entry.id === spawn.room)
+    if (!room) continue
+    const spot = shiftOffDoor(room, spawn.x, spawn.y)
+    spawn.x = spot.x
+    spawn.y = spot.y
   }
   return spawns
 }
@@ -529,11 +554,66 @@ export function connected(chart: FloorChart): boolean {
   return seen.size === chart.rooms.length
 }
 
+/** A doorway sits in the middle of its wall, inset just enough to stand in. */
 export function doorPad(dir: Dir): { x: number; y: number } {
-  if (dir === 'n') return { x: -40, y: -ROOM_H / 2 + 22 }
-  if (dir === 's') return { x: 40, y: ROOM_H / 2 - 22 }
-  if (dir === 'w') return { x: -ROOM_W / 2 + 20, y: -56 }
-  return { x: ROOM_W / 2 - 20, y: 56 }
+  if (dir === 'n') return { x: 0, y: -ROOM_H / 2 + 28 }
+  if (dir === 's') return { x: 0, y: ROOM_H / 2 - 28 }
+  if (dir === 'w') return { x: -ROOM_W / 2 + 28, y: 0 }
+  return { x: ROOM_W / 2 - 28, y: 0 }
+}
+
+export const DOOR_CLEAR = 36
+
+export function onDoor(room: RoomNode, x: number, y: number, clear = DOOR_CLEAR): boolean {
+  return room.doors.some((door) => {
+    const pad = doorPad(door.dir)
+    return Math.hypot(x - pad.x, y - pad.y) < clear
+  })
+}
+
+/** Slide a prop toward the room center until it is off every threshold. */
+export function shiftOffDoor(room: RoomNode, x: number, y: number): { x: number; y: number } {
+  let px = x
+  let py = y
+  for (let step = 0; step < 8 && onDoor(room, px, py); step += 1) {
+    const len = Math.hypot(px, py) || 1
+    px -= (px / len) * 18
+    py -= (py / len) * 18
+  }
+  return { x: Math.round(px), y: Math.round(py) }
+}
+
+/** First doorway on the shortest walk to an extract or fast room. */
+export function nextExitDoor(chart: FloorChart, roomId: string): { dir: Dir; to: string } | null {
+  const here = roomAt(chart, roomId)
+  if (!here || here.role === 'extract' || here.role === 'fast') return null
+  const goal = new Set(chart.rooms.filter((room) => room.role === 'extract' || room.role === 'fast').map((room) => room.id))
+  if (goal.size === 0) return null
+  const prev = new Map<string, { from: string; dir: Dir } | null>([[roomId, null]])
+  const queue = [roomId]
+  let hit: string | null = null
+  for (let i = 0; i < queue.length && hit == null; i += 1) {
+    const id = queue[i]!
+    if (goal.has(id)) {
+      hit = id
+      break
+    }
+    const room = roomAt(chart, id)
+    if (!room) continue
+    for (const door of room.doors) {
+      if (prev.has(door.to)) continue
+      prev.set(door.to, { from: id, dir: door.dir })
+      queue.push(door.to)
+    }
+  }
+  if (!hit) return null
+  let node = hit
+  let via = prev.get(node)
+  while (via && via.from !== roomId) {
+    node = via.from
+    via = prev.get(node)
+  }
+  return via ? { dir: via.dir, to: node } : null
 }
 
 export function nearPad(x: number, y: number, dir: Dir): boolean {

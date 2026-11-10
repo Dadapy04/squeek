@@ -54,10 +54,7 @@ function px(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: n
 export function themeCell(depth: number, cx: number, cy: number, cols: number, rows: number): HTMLCanvasElement {
   const kit = themeKit(depth)
   const edge = cx === 0 || cy === 0 || cx === cols - 1 || cy === rows - 1
-  const midX = cx > cols / 2 - 2 && cx < cols / 2 + 1
-  const midY = cy > rows / 2 - 2 && cy < rows / 2 + 1
-  const door = edge && ((cy === 0 || cy === rows - 1) && midX || (cx === 0 || cx === cols - 1) && midY)
-  const kind = door ? 'door' : edge ? 'wall' : 'floor'
+  const kind = edge ? 'wall' : 'floor'
   const variant = (cx * 3 + cy) % 3
   return sheet(`t${depth}-${kind}-${variant}`, (ctx) => {
     if (kind === 'wall') {
@@ -66,12 +63,6 @@ export function themeCell(depth: number, cx: number, cy: number, cols: number, r
       px(ctx, 0, 13, 16, 3, kit.dark)
       if (variant === 0) px(ctx, 4, 6, 3, 3, kit.trim)
       if (variant === 1) px(ctx, 10, 7, 2, 4, kit.floorB)
-    } else if (kind === 'door') {
-      px(ctx, 0, 0, 16, 16, kit.dark)
-      px(ctx, 1, 1, 3, 14, kit.trim)
-      px(ctx, 12, 1, 3, 14, kit.trim)
-      px(ctx, 4, 1, 8, 2, kit.wallTop)
-      px(ctx, 6, 8, 4, 5, kit.floor)
     } else {
       px(ctx, 0, 0, 16, 16, variant === 2 ? kit.floorB : kit.floor)
       if (depth === 1) {
