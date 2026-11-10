@@ -77,7 +77,8 @@ export function themeCell(depth: number, cx: number, cy: number, cols: number, r
       if (depth === 1) {
         if (variant === 0) px(ctx, 3, 4, 2, 2, kit.mote)
         if (variant === 1) px(ctx, 11, 9, 3, 2, kit.accent)
-        px(ctx, 0, 15, 16, 1, kit.dark)
+        px(ctx, 6, 11, 2, 2, kit.dark)
+        px(ctx, 1, 2, 2, 1, kit.floorB)
       } else if (depth === 2) {
         if (variant !== 2) px(ctx, 2, 2 + variant * 4, 8, 2, kit.accent)
         px(ctx, 12, 12, 2, 2, kit.mote)

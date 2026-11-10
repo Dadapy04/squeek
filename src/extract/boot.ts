@@ -3,7 +3,8 @@ import { drawAssetSheet } from './patterns.ts'
 import { drawBlockStrip, drawCarryStrip, drawContactSheet, drawDirectionStrip, drawHoldStrip, drawSwingStrip, drawWalkStrip } from './pose.ts'
 import { paintTitleScreen, titleUsesDesktopPrompt } from './title.ts'
 import { clampCenter, followBase, stickVector } from './float-stick.ts'
-import { AUDIO_KEY, playBoom, playFuseTick, playSoulBurst, playSoulCharge, readAudioPref, resumeAudio } from './soul-audio.ts'
+import { AUDIO_KEY, playBoom, playFuseTick, playSoulBurst, playSoulCharge, resumeAudio } from './soul-audio.ts'
+import { bedFor, cuesFromDelta, deltaFromSnaps, playBed, playCue, readAudioPref as readMix, unlockAudio, writeAudioPref, type Ear } from './game-audio.ts'
 import { armAttack, attackLive, blockSecondTap, disarmAttack, holdReleased, type AttackBuffer } from './input-lock.ts'
 import { bossTitle, drawChestStrip, drawExtract, drawGallery, drawLootStrip, drawRevealStrip, setEffectBudget } from './view.ts'
 import { backingRatio } from './camera.ts'
@@ -143,9 +144,16 @@ function requestStageFullscreen(): void {
   }
 }
 
-window.addEventListener('pointerdown', () => { resumeAudio(); requestStageFullscreen() }, { once: true })
+window.addEventListener('pointerdown', () => { resumeAudio(); unlockAudio(); requestStageFullscreen() }, { once: true })
+window.addEventListener('pointerdown', (event) => {
+  const el = event.target instanceof Element ? event.target : null
+  if (el?.closest('button')) playCue(el.closest('[data-set-lang]') ? 'ui.lang' : 'ui.tap', mixPref())
+}, true)
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) resumeAudio()
+  if (!document.hidden) {
+    resumeAudio()
+    unlockAudio()
+  }
 })
 
 function dismissTitle(): void {
@@ -277,6 +285,7 @@ document.querySelector('#workshop')!.addEventListener('pointerdown', (event) => 
 })
 document.querySelector('#openBag')!.addEventListener('click', () => {
   if (save.run && bagFull(save.run)) rememberTip('bagfull')
+  playCue('ui.bag', mixPref())
   openBag()
 })
 document.querySelector('#bagSwap')!.addEventListener('click', () => openBag())
@@ -285,6 +294,24 @@ document.querySelector('#bagDropAll')!.addEventListener('click', () => dropBag(9
 document.querySelector('#bagUse')!.addEventListener('click', () => useBag())
 document.querySelector('#openShop')!.addEventListener('click', () => openPanel('btn.workshop', 'shop.leadRun'))
 document.querySelector('#openWorkshop')!.addEventListener('click', () => { rememberTip('workshop'); openWorkshop() })
+const musicVol = document.querySelector<HTMLInputElement>('#musicVol')
+const sfxVol = document.querySelector<HTMLInputElement>('#sfxVol')
+function paintMix(): void {
+  const pref = mixPref()
+  if (musicVol) musicVol.value = String(Math.round((pref.muted ? 0 : pref.music) * 100))
+  if (sfxVol) sfxVol.value = String(Math.round((pref.muted ? 0 : pref.sfx) * 100))
+}
+function storeMix(music: number, sfx: number): void {
+  storage?.setItem(AUDIO_KEY, writeAudioPref({ muted: music <= 0 && sfx <= 0, volume: sfx, music, sfx }))
+  paintMix()
+}
+musicVol?.addEventListener('input', () => storeMix(Number(musicVol.value) / 100, Number(sfxVol?.value ?? 70) / 100))
+sfxVol?.addEventListener('input', () => storeMix(Number(musicVol?.value ?? 45) / 100, Number(sfxVol.value) / 100))
+document.querySelector('#muteMix')?.addEventListener('click', () => {
+  storage?.setItem(AUDIO_KEY, mixPref().muted ? writeAudioPref({ muted: false, volume: 0.7, music: 0.45, sfx: 0.7 }) : 'mute')
+  paintMix()
+})
+paintMix()
 document.querySelector('#tutorialReplay')?.addEventListener('click', () => {
   const next = replayTutorial()
   save.tutorialSeen = next.seen
@@ -826,8 +853,65 @@ function confirmWorkshop(): void {
   clink()
 }
 let soulHeard = ''
+function mixPref() {
+  return readMix(storage?.getItem(AUDIO_KEY) ?? null)
+}
 function audioPref() {
-  return readAudioPref(storage?.getItem(AUDIO_KEY) ?? null)
+  const mix = mixPref()
+  return { muted: mix.muted, volume: mix.sfx }
+}
+let lastEar: Ear | null = null
+function earOf(run: NonNullable<ExtractSave['run']>): Ear {
+  const chart = run.chart
+  const veins = chart?.veins ?? []
+  const props = chart?.props ?? []
+  return {
+    hp: run.hp,
+    stepping: run.stepping,
+    swing: run.swing,
+    dodge: run.dodge,
+    blocking: run.blocking,
+    shield: run.shield,
+    bag: run.bag.length,
+    drops: run.drops.length,
+    slain: run.slain.length,
+    bossSlain: run.foes.some((foe) => foe.kind === 'boss' && run.slain.includes(foe.id)),
+    keys: run.keys ?? 0,
+    opened: run.opened.length,
+    cracks: props.filter((prop) => prop.kind === 'crack' && ((prop.hp ?? 3) <= 0 || prop.state === 'open')).length,
+    vein: veins.reduce((sum, vein) => sum + Math.max(0, vein.max - vein.hp), 0),
+    veinsBroken: veins.filter((vein) => vein.hp <= 0).length,
+    fuse: props.filter((prop) => (prop.fuse ?? 0) > 0).length,
+    booms: run.booms?.length ?? 0,
+    channel: run.channel,
+    depth: run.depth,
+    room: run.roomId ?? '',
+    coins: save.coins,
+    sword: run.swordLevel ?? 0,
+    slots: run.bagSlots ?? 12,
+    banner: run.banner?.key ?? '',
+    wind: run.foes.reduce((sum, foe) => sum + (foe.zone === run.zone ? foe.wind : 0), 0),
+    heard: run.foes.reduce((sum, foe) => sum + (foe.zone === run.zone ? (foe.heard ?? 0) : 0), 0),
+    low: run.hp > 0 && run.hp < HP_MAX * 0.35,
+    hum: run.channel > 0.2,
+  }
+}
+function hear(run: ExtractSave['run']): void {
+  const pref = mixPref()
+  if (!run || outcome) {
+    lastEar = null
+    playBed(bedFor({ title: titleOpen, run: false }), pref)
+    return
+  }
+  const cues = cuesFromDelta(deltaFromSnaps(lastEar, earOf(run)))
+  lastEar = earOf(run)
+  for (const cue of cues) {
+    if (cue === 'fuse.tick' || cue === 'barrel.boom') continue
+    playCue(cue, pref)
+  }
+  const near = foeView(run).some((foe) => foe.hp > 0 && (foe.wind > 0 || (foe.heard ?? 0) > 0 || Math.hypot(foe.x - run.x, foe.y - run.y) < 130))
+  const boss = run.foes.some((foe) => foe.kind === 'boss' && foe.room === run.roomId && foe.hp > 0 && !run.slain.includes(foe.id))
+  playBed(bedFor({ run: true, depth: run.depth, combat: near, boss }), pref)
 }
 function watchSoul(run: NonNullable<ExtractSave['run']>): void {
   const cast = run.soul?.cast ?? 0
@@ -1025,6 +1109,7 @@ function frame(now: number): void {
     const height = Math.max(1, titleCanvas.clientHeight)
     sizeCanvas(titleCanvas, titleCtx, width, height)
     paintTitleScreen(titleCtx, width, height, (now - titleStarted) / 1000, fine)
+    hear(null)
     requestAnimationFrame(frame)
     return
   }
@@ -1061,6 +1146,7 @@ function frame(now: number): void {
         rememberTip('take')
       }
       notePlay(save.run, input)
+      hear(save.run)
       tap.attack = false
       tap.dodge = false
       tap.interact = false
@@ -1219,10 +1305,10 @@ let viewportW = 0
 let viewportH = 0
 function pinField(): void {
   const view = window.visualViewport
-  const width = Math.round(view?.width ?? window.innerWidth)
-  const height = Math.round(view?.height ?? window.innerHeight)
-  const left = Math.round(view?.offsetLeft ?? 0)
-  const top = Math.round(view?.offsetTop ?? 0)
+  const width = Math.max(window.innerWidth, Math.round(view?.width ?? 0))
+  const height = Math.max(window.innerHeight, Math.round(view?.height ?? 0))
+  const left = 0
+  const top = 0
   field.style.left = `${left}px`
   field.style.top = `${top}px`
   field.style.right = 'auto'
@@ -1235,8 +1321,8 @@ function pinField(): void {
 }
 function syncViewport(): void {
   const view = window.visualViewport
-  const width = Math.round(view?.width ?? window.innerWidth)
-  const height = Math.round(view?.height ?? window.innerHeight)
+  const width = Math.max(window.innerWidth, Math.round(view?.width ?? 0))
+  const height = Math.max(window.innerHeight, Math.round(view?.height ?? 0))
   pinField()
   if (viewportW > 0 && Math.abs(width - viewportW) < 4 && Math.abs(height - viewportH) < 4) return
   viewportW = width
@@ -1317,8 +1403,8 @@ function paint(): void {
   if (!run || outcome) return
   pinField()
   const view = window.visualViewport
-  const width = Math.max(240, Math.round(view?.width ?? window.innerWidth))
-  const height = Math.max(180, Math.round(view?.height ?? window.innerHeight))
+  const width = Math.max(240, window.innerWidth, Math.round(view?.width ?? 0))
+  const height = Math.max(180, window.innerHeight, Math.round(view?.height ?? 0))
   sizeCanvas(canvas, ctx, width, height)
   reveal(run)
   drawExtract(ctx, run, width, height)
@@ -1378,7 +1464,7 @@ function paint(): void {
   const veinNear = propNear == null && !near ? nearestVein(run) : null
   const stairsReady = onStairs(run) && stairsOpen(run)
   open.hidden = !near && propNear == null && veinNear == null && !stairsReady
-  if (!open.hidden) open.textContent = stairsReady ? t('stairs.down') : veinNear ? t('hud.mine') : t('hud.open')
+  if (!open.hidden) open.textContent = stairsReady ? t('stairs.down') : propNear?.kind === 'barrel' ? t('hud.fuse') : veinNear ? t('hud.mine') : t('hud.open')
   const prize = claimTarget(run)
   const shrine = soulNear(run)
   const claim = document.querySelector<HTMLButtonElement>('#claim')!
@@ -1442,7 +1528,7 @@ function paint(): void {
   document.querySelector<HTMLButtonElement>('#slotSoon')!.dataset.kind = 'soon'
   const shieldSlot = document.querySelector<HTMLButtonElement>('#slotShield')!
   if (run.shield == null) {
-    shieldSlot.textContent = t('hud.soon')
+    shieldSlot.textContent = t('item.shield')
     shieldSlot.classList.add('locked')
   } else {
     shieldSlot.textContent = t('hud.shield', { n: run.shield })
@@ -1520,6 +1606,7 @@ function refreshTip(): void {
   box.hidden = false
   const at = tipAnchor(id)
   box.dataset.at = at
+  if (box.dataset.tip !== id) playCue('ui.tip', mixPref())
   box.dataset.tip = id
   const text = document.querySelector('#tipText')
   if (text) text.textContent = t(`tip.${id}` as MsgKey)

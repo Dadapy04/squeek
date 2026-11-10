@@ -1,12 +1,12 @@
 import { cameraScale } from './camera.ts'
 import { chromaOffset, letterDrift, noteSoulTitle, titleAlpha, titleAnchor, titleGlyph, titleJitter, titlePixel, titleScale, TITLE_LINE } from './soul-title.ts'
-import { blit, cableRun, debrisSprite, lampHousing, lootIcon, machineSprite, mineTile, pipeRun, rockRim, ruinTile, timberTile } from './patterns.ts'
+import { blit, cableRun, debrisSprite, lampHousing, lootIcon, machineSprite, pipeRun, rockRim } from './patterns.ts'
 import { drawHero, drawMaw, drawWing } from './pose.ts'
 import { spearReach, spearRgb } from './spear.ts'
 import { bossDisplay, bossPattern, depthPlan, foeName, lineup, type AttackKind } from './depths.ts'
 import { t } from './i18n.ts'
 import { roomAt } from './dungeon.ts'
-import { drawThemeMotes, paintThemePlate } from './tilesets.ts'
+import { drawThemeMotes, paintThemePlate, themeKit } from './tilesets.ts'
 import { foeCanvas, hasFoeSprite } from './foe-sprites.ts'
 import { blitMotif, interactable, mapLabel, spriteIdFor } from './map-sprites.ts'
 import { BLAST_RADIUS, EXTRACT_ZONE, FOE_SPOTS, NEST_DOOR, SOUL_CAST, SOUL_RADIUS, STAIRS, SWING_REACH, ZONE_H, ZONE_W, claimTarget, depthMods, foeView, isSpecial, lootTitle, nestGap, runCrates, stairsOpen, syncCentipede, swordAim, type Drop, type Foe, type Run } from './sim.ts'
@@ -152,7 +152,7 @@ export function drawExtract(
   const shake = Math.max(soulShake, Math.min(7, (run.shake ?? 0) * 32))
   ctx.save()
   if (shake > 0) ctx.translate(Math.round(Math.sin(run.age * 47) * shake), Math.round(Math.cos(run.age * 53) * shake))
-  drawBackdrop(ctx, scale, at, width, height, originX, originY, run.age, run.zone)
+  drawBackdrop(ctx, scale, at, width, height, originX, originY, run.age, run.depth || 1)
   drawFloor(ctx, run, scale, at)
   drawMineDressing(ctx, run, scale, at)
   drawDungeonDress(ctx, run, scale, at)
@@ -727,13 +727,14 @@ function drawMineDressing(
   scale: number,
   at: (x: number, y: number) => { x: number; y: number },
 ): void {
-  const rocks = run.zone === 'pangkalan'
+  const dressed = (run.depth ?? 1) <= 1
+  const rocks = !dressed ? [] : run.zone === 'pangkalan'
     ? [[-92, -120, 22, 14], [78, -130, 18, 16], [-100, 40, 18, 16], [86, 30, 16, 18], [-70, -20, 14, 12], [62, 70, 12, 10]]
     : run.zone === 'tambang'
       ? [[-96, -40, 18, 20], [90, 20, 16, 18], [-70, 50, 20, 12], [55, -30, 14, 16], [-30, -90, 16, 12], [20, 80, 12, 14]]
       : [[-90, -40, 16, 24], [70, -20, 14, 20], [-60, 40, 18, 14], [50, 60, 16, 18], [-20, -80, 12, 16], [10, 20, 20, 10]]
-  for (const [x, y, w, h] of rocks) rock(ctx, at, scale, x, y, w, h)
-  for (let i = 0, x = -ZONE_W / 2 + 8; x < ZONE_W / 2; i += 1, x += 36) {
+  if (dressed) for (const [x, y, w, h] of rocks) rock(ctx, at, scale, x, y, w, h)
+  if (dressed) for (let i = 0, x = -ZONE_W / 2 + 8; x < ZONE_W / 2; i += 1, x += 36) {
     if (i % 4 === 0) continue
     const northOpen = run.zone === 'sarang' && Math.abs(x) < NEST_DOOR + 16
     const southOpen = run.zone === 'reruntuhan' && Math.abs(x + 6) < NEST_DOOR + 16
@@ -750,12 +751,14 @@ function drawMineDressing(
     ctx.fillRect(Math.round(sill.x), Math.round(sill.y), Math.round(8 * scale), mark)
     ctx.fillRect(Math.round(sill.x + (NEST_DOOR * 2 - 8) * scale), Math.round(sill.y), Math.round(8 * scale), mark)
   }
-  for (let i = 0, y = -ZONE_H / 2 + 30; y < ZONE_H / 2 - 10; i += 1, y += 42) {
+  if (dressed) for (let i = 0, y = -ZONE_H / 2 + 30; y < ZONE_H / 2 - 10; i += 1, y += 42) {
     if (i % 3 === 1) continue
     rock(ctx, at, scale, -ZONE_W / 2 + 2, y, 8 + (i % 2) * 4, 10 + (i % 3) * 3)
     rock(ctx, at, scale, ZONE_W / 2 - 14, y + 6, 10, 8 + (i % 3) * 4)
   }
-  if (run.zone === 'pangkalan') {
+  if (!dressed) {
+    /* deeper floors keep the baked tileset clear of the burrow clutter */
+  } else if (run.zone === 'pangkalan') {
     pipe(ctx, at, scale, -80, 20, 50, 0, '#6a442c')
     cable(ctx, at, scale, 40, -40, 36, 18, '#2a241c')
     lamp(ctx, at, scale, -48, 36, '#c4a15a', run.age)
@@ -1315,12 +1318,6 @@ function floorFill(zone: Run['zone']): string {
   return '#241c16'
 }
 
-function groundTile(zone: Run['zone'], cx: number, cy: number): HTMLCanvasElement {
-  if (zone === 'pangkalan') return timberTile(cx, cy)
-  if (zone === 'tambang') return mineTile(cx, cy)
-  return ruinTile(cx, cy)
-}
-
 function drawBackdrop(
   ctx: CanvasRenderingContext2D,
   scale: number,
@@ -1330,8 +1327,9 @@ function drawBackdrop(
   originX: number,
   originY: number,
   age: number,
-  zone: Run['zone'],
+  depth: number,
 ): void {
+  const kit = themeKit(depth)
   const left = -originX / scale
   const top = -originY / scale
   const right = left + width / scale
@@ -1341,7 +1339,9 @@ function drawBackdrop(
     for (let x = Math.floor(left / step) * step; x < right; x += step) {
       if (x >= -ZONE_W / 2 && x + step <= ZONE_W / 2 && y >= -ZONE_H / 2 && y + step <= ZONE_H / 2) continue
       const p = at(x, y)
-      blit(ctx, groundTile(zone, Math.floor(x / step), Math.floor(y / step)), p.x, p.y, scale)
+      const flip = (Math.floor(x / step) + Math.floor(y / step)) % 2 === 0
+      ctx.fillStyle = flip ? kit.dark : kit.wall
+      ctx.fillRect(Math.round(p.x), Math.round(p.y), Math.ceil(step * scale) + 1, Math.ceil(step * scale) + 1)
     }
   }
   const glow = 0.35 + Math.sin(age * 3) * 0.06
@@ -1409,7 +1409,7 @@ function drawFloor(
   const left = at(-ZONE_W / 2, -ZONE_H / 2)
   const plate = roomPlate(run.depth || 1, scale)
   if (plate) ctx.drawImage(plate, Math.floor(left.x), Math.floor(left.y))
-  strokeRoom(ctx, left.x, left.y, ZONE_W * scale, ZONE_H * scale, nestGap(run.zone), at(-NEST_DOOR, 0).x - left.x, at(NEST_DOOR, 0).x - left.x)
+  strokeRoom(ctx, left.x, left.y, ZONE_W * scale, ZONE_H * scale, nestGap(run.zone), at(-NEST_DOOR, 0).x - left.x, at(NEST_DOOR, 0).x - left.x, themeKit(run.depth || 1).wallTop)
 }
 
 function strokeRoom(
@@ -1421,8 +1421,9 @@ function strokeRoom(
   gap: 'north' | 'south' | null,
   door0: number,
   door1: number,
+  color: string,
 ): void {
-  ctx.strokeStyle = '#3a2c20'
+  ctx.strokeStyle = color
   ctx.lineWidth = 2
   ctx.beginPath()
   if (gap === 'south') {

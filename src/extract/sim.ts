@@ -958,7 +958,7 @@ export function deploy(save: ExtractSave, picks: Stack[], bringShield = false): 
       rite.told = true
       return rite
     })(),
-    banner: { text: t('soul.start'), life: 4.5, key: 'soul.start' },
+    banner: { text: t('soul.start'), life: 1.6, key: 'soul.start' },
   }
   ensureChart(save.run)
   save.insured = null
