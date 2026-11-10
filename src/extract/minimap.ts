@@ -1,4 +1,4 @@
-import { roomAt, themeFor, type FloorChart } from './dungeon.ts'
+import { ROOM_H, ROOM_W, roomAt, themeFor, type FloorChart } from './dungeon.ts'
 import { EXTRACT_ZONE, NEST_DOOR, ZONE_H, ZONE_W, nestGap, runCrates, type Run, type ZoneId } from './sim.ts'
 
 export const MAP_TILE = 20
@@ -238,11 +238,51 @@ function drawChart(ctx: CanvasRenderingContext2D, run: Run, chart: FloorChart, w
     ctx.fillStyle = icon
     ctx.fillRect(p.x + cell / 2 - 2, p.y + cell / 2 - 2, 4, 4)
   }
-  const here = roomAt(chart, run.roomId) ?? chart.rooms.find((room) => room.zone === run.zone)
-  if (here) {
-    const p = at(here.gx, here.gy)
-    ctx.fillStyle = '#f4f1e8'
-    ctx.fillRect(p.x + 2, p.y + cell - 6, 3, 3)
+  const marker = playerMarker(run, width, height)
+  if (marker) {
+    const blink = Math.floor((run.age || 0) * 5) % 2 === 0
+    ctx.fillStyle = '#14110e'
+    ctx.fillRect(marker.x - 3, marker.y - 3, 7, 7)
+    ctx.fillStyle = blink ? '#f7fbff' : '#f2c04a'
+    ctx.fillRect(marker.x - 2, marker.y - 2, 5, 5)
+    ctx.fillStyle = '#f2c04a'
+    const face = run.facing || 0
+    ctx.fillRect(Math.round(marker.x + Math.cos(face) * 6 - 1), Math.round(marker.y + Math.sin(face) * 6 - 1), 3, 3)
   }
   return true
+}
+
+/** Pixel of the player dot inside the current room cell. Null when that room is hidden. */
+export function playerMarker(run: Run, width: number, height: number): { x: number; y: number } | null {
+  const chart = run.chart
+  if (!chart || chart.rooms.length === 0) return null
+  const here = roomAt(chart, run.roomId) ?? chart.rooms.find((room) => room.zone === run.zone)
+  if (!here) return null
+  if (here.secret && !(run.seenRooms ?? []).includes(here.id)) return null
+  let minX = 0
+  let minY = 0
+  let maxX = 0
+  let maxY = 0
+  for (const room of chart.rooms) {
+    minX = Math.min(minX, room.gx)
+    minY = Math.min(minY, room.gy)
+    maxX = Math.max(maxX, room.gx)
+    maxY = Math.max(maxY, room.gy)
+  }
+  const cols = maxX - minX + 1
+  const rows = maxY - minY + 1
+  const pad = 6
+  const gap = 3
+  const cell = Math.max(6, Math.floor(Math.min((width - pad * 2 - gap * (cols - 1)) / cols, (height - pad * 2 - gap * (rows - 1)) / rows)))
+  const originX = Math.round((width - (cols * cell + (cols - 1) * gap)) / 2)
+  const originY = Math.round((height - (rows * cell + (rows - 1) * gap)) / 2)
+  const left = originX + (here.gx - minX) * (cell + gap)
+  const top = originY + (here.gy - minY) * (cell + gap)
+  const nx = Math.max(0, Math.min(1, (run.x + ROOM_W / 2) / ROOM_W))
+  const ny = Math.max(0, Math.min(1, (run.y + ROOM_H / 2) / ROOM_H))
+  const inset = 3
+  return {
+    x: Math.round(left + inset + nx * (cell - inset * 2)),
+    y: Math.round(top + inset + ny * (cell - inset * 2)),
+  }
 }

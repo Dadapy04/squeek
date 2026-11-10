@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { markers, reveal, tileKey, worldPoint } from '../src/extract/minimap.ts'
+import { markers, playerMarker, reveal, tileKey, worldPoint } from '../src/extract/minimap.ts'
 import { CRATES, deploy, freshSave, type Run } from '../src/extract/sim.ts'
 import { loadExtract, writeExtract } from '../src/extract/save.ts'
 
@@ -73,6 +73,26 @@ describe('minimap fog', () => {
     const fancy = markers(run).find((mark) => mark.fancy)
     expect(fancy?.x).toBe(relic.x)
     expect(fancy?.kind).toBe('chest')
+  })
+
+  it('moves the player dot inside the room cell and into the next room', () => {
+    const run = started()
+    const small = playerMarker(run, 100, 86)
+    const big = playerMarker(run, 220, 280)
+    expect(small).toBeTruthy()
+    expect(big).toBeTruthy()
+    run.x += 70
+    run.y -= 40
+    const moved = playerMarker(run, 100, 86)
+    const movedBig = playerMarker(run, 220, 280)
+    expect(moved!.x).not.toBe(small!.x)
+    expect(moved!.y).not.toBe(small!.y)
+    expect(movedBig!.x).not.toBe(big!.x)
+    expect(movedBig!.y).not.toBe(big!.y)
+    run.roomId = 'room-mine'
+    run.zone = 'tambang'
+    const next = playerMarker(run, 100, 86)
+    expect(next!.y).not.toBe(moved!.y)
   })
 
   it('places the base above the mine and the ruins to the right', () => {
