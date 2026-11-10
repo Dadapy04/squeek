@@ -5,6 +5,8 @@
 import { mintUnit, type ItemUnit } from '../src/extract/coins.ts'
 import { coinFits } from './loot-law.ts'
 import {
+  FIELD_BANDAGE_CAP,
+  FIELD_PRICE,
   MERCHANT,
   bagSlotsOf,
   isRichOre,
@@ -62,6 +64,8 @@ export interface ActiveRun {
   spear: SpearRow | null
   blade: BladeRow | null
   insured: Insured | null
+  /** Bandages bought from floor stalls this delve. */
+  fieldBuys?: number
 }
 
 export interface Account {
@@ -224,11 +228,15 @@ export function buyMerchant(account: Account, kind: string): Ok<{ coins: number 
 }
 
 export function fieldBuy(account: Account, kind: string): Ok<{ coins: number }> | Fail {
-  if (!account.activeRun) return { ok: false, reason: 'no-run' }
-  if (kind !== 'bandage' && kind !== 'p3k') return { ok: false, reason: 'kind' }
-  const offer = MERCHANT[kind as MerchantKind]
-  if (account.coins < offer.buy) return { ok: false, reason: 'poor' }
-  account.coins -= offer.buy
+  const run = account.activeRun
+  if (!run) return { ok: false, reason: 'no-run' }
+  if (kind !== 'bandage') return { ok: false, reason: 'kind' }
+  const bought = run.fieldBuys ?? 0
+  if (bought >= FIELD_BANDAGE_CAP) return { ok: false, reason: 'spent' }
+  const price = FIELD_PRICE.bandage
+  if (account.coins < price) return { ok: false, reason: 'poor' }
+  account.coins -= price
+  run.fieldBuys = bought + 1
   return { ok: true, coins: account.coins }
 }
 

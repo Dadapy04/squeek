@@ -162,6 +162,7 @@ export const DICT = {
   'online.why.log': { id: 'Catatan lari tidak lengkap.', en: 'The run log is incomplete.' },
   'online.why.time': { id: 'Waktu lari tidak masuk akal.', en: 'The run time is not plausible.' },
   'online.why.token': { id: 'Tanda lari tidak berlaku.', en: 'The run token is not valid.' },
+  'online.why.guest': { id: 'permainan tamu di perangkat ini', en: 'guest play stays on this device' },
   'online.safe': { id: 'Tidak ada yang hilang sebelum kamu memilih.', en: 'Nothing is lost until you choose.' },
   'online.sideLocal': { id: 'Perangkat ini: {coins} koin, nilai {stash}, lantai {depth}.', en: 'This device: {coins} coins, stash {stash}, floor {depth}.' },
   'online.sideCloud': { id: 'Awan: {coins} koin, nilai {stash}, lantai {depth}.', en: 'Cloud: {coins} coins, stash {stash}, floor {depth}.' },

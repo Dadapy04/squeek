@@ -2,7 +2,7 @@ import { coinsFor, hashText, mintUnit, mixSeed, readUnit, type CoinRarity, type 
 import { bossLootRarity } from '../../shared/loot-law.ts'
 import { currentLocale, t, type MsgKey } from './i18n.ts'
 import { BOSS_RAGE_SEC, DEPTH_CAP, DEPTHS, bladeDisplay, bossChip, bossDisplay, bossPattern, bossPhaseOf, depthPlan, foeChip, frontGuarded, GUARD_FACTOR, makeBlade, rageMul, recommendDamage, type Blade, type Breed } from './depths.ts'
-import { bagSlotsOf, blockArc, isRichOre, MERCHANT, nextBagUpgrade, shieldMaxFor, swordBonusPct, swordDamage, upgradeCost, upgradeOre, type MerchantKind } from './economy.ts'
+import { bagSlotsOf, blockArc, FIELD_PRICE, isRichOre, MERCHANT, nextBagUpgrade, shieldMaxFor, swordBonusPct, swordDamage, upgradeCost, upgradeOre, type MerchantKind } from './economy.ts'
 import { SPEAR_ACTIVE, SPEAR_ARC, SPEAR_TOTAL, SPEAR_WIND, critLands, rollSpear, spearBossBonus, spearPower, spearReach, type Spear } from './spear.ts'
 import { doorPad, generateFloor, layoutShift, nearPad, oreRoll, oreValue, roomAt, spineRoom, type FloorChart, type OreKind, type PropNode, type RoomNode, type SpawnNode, type VeinNode } from './dungeon.ts'
 
@@ -862,7 +862,8 @@ export function migrateOneWeapon(save: ExtractSave): void {
   const run = save.run
   if (!run) return
   if (run.spear && run.spear.origin === 'loot') {
-    run.found = [...(run.found ?? []), run.spear]
+    const found = run.found ?? []
+    if (!found.some((item) => item.id === run.spear?.id)) run.found = [...found, run.spear]
     run.spear = null
   }
   if (run.spear && run.blade) {
@@ -2806,16 +2807,18 @@ function pocketUnit(run: Run, kind: ItemKind, unit: ItemUnit, id: string): void 
   float(run, t('hud.bagFull'))
 }
 
-export const FIELD_PRICE = { bandage: 40, tonic: 32 } as const
+export { FIELD_PRICE } from './economy.ts'
 
-export function fieldBuy(save: ExtractSave, kind: 'bandage' | 'tonic'): string {
+export function fieldBuy(save: ExtractSave, kind: 'bandage' | 'tonic', paid = false): string {
   const run = save.run
   if (!run?.chart) return ''
   const vendor = run.chart.props.find((item) => item.kind === 'vendor' && item.room === run.roomId && item.state === 'live' && Math.hypot(item.x - run.x, item.y - run.y) < PROP_REACH)
   if (!vendor) return ''
   const price = FIELD_PRICE[kind]
-  if (save.coins < price) return t('shop.poor')
-  save.coins -= price
+  if (!paid) {
+    if (save.coins < price) return t('shop.poor')
+    save.coins -= price
+  }
   pocketUnit(run, kind, { rarity: 'biasa', coins: kind === 'bandage' ? 8 : 6, origin: 'loot' }, `vendor-${kind}-${Math.floor(run.age * 1000)}-${run.x}`)
   vendor.state = 'spent'
   return ''

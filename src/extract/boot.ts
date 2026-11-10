@@ -1279,15 +1279,21 @@ function frame(now: number): void {
       let ended: 'extracted' | 'dead' | null = null
       if (clock.steps > 0) {
         const input = readInput()
-        if (input.interact && save.run && walletLive()) {
-          void walletAct('/v1/act/field-buy', { kind: 'bandage' }).then((result) => {
-            if (result.ok && save.run) addUnits(save.run.bag, 'bandage', [{ coins: 8, rarity: 'biasa', origin: 'loot' }])
-          })
-        } else if (input.interact && save.run) {
-          const purse = save.coins
-          const note = fieldBuy(save, 'bandage')
-          if (note) save.run.floats.push({ text: note, life: 1.6 })
-          else if (save.coins < purse) playCue('world.buy', mixPref())
+        if (input.interact && save.run && atFieldStall(save.run)) {
+          if (walletLive()) {
+            void walletAct('/v1/act/field-buy', { kind: 'bandage' }, false).then((result) => {
+              if (!result.ok || !save.run) return
+              if (typeof result.coins === 'number') save.coins = result.coins
+              const note = fieldBuy(save, 'bandage', true)
+              if (note && save.run) save.run.floats.push({ text: note, life: 1.6 })
+              else playCue('world.buy', mixPref())
+            })
+          } else {
+            const purse = save.coins
+            const note = fieldBuy(save, 'bandage')
+            if (note) save.run.floats.push({ text: note, life: 1.6 })
+            else if (save.coins < purse) playCue('world.buy', mixPref())
+          }
         }
         if (soulNear(save.run) && (tap.claim || tap.interact)) claimSoul(save.run)
         else if (tap.claim && !bagFull(save.run)) {
@@ -1426,7 +1432,8 @@ function finish(kind: 'extracted' | 'dead'): void {
   outcome = kind
   lastResult = { kind, rows: carried, gained }
   writeExtract(storage, save)
-  paintResult(kind, carried, gained)
+  const guestReason = kind === 'extracted' ? t('online.why.guest') : t('online.why.dead')
+  paintResult(kind, carried, gained, t('online.notRanked', { reason: guestReason }))
 }
 
 async function finishWallet(kind: 'extracted' | 'dead', report: ReturnType<typeof reportFromRun> | null, carried: ResultRow[], gained: number, depth: number): Promise<void> {
@@ -1577,6 +1584,10 @@ document.querySelector('#view')!.addEventListener('wheel', (event) => {
   if (!fieldVisible() || !save.run) return
   if (wheel.ctrlKey || wheel.metaKey) wheel.preventDefault()
 }, { passive: false })
+
+function atFieldStall(run: NonNullable<ExtractSave['run']>): boolean {
+  return !!run.chart?.props.some((item) => item.kind === 'vendor' && item.state === 'live' && item.room === run.roomId && Math.hypot(item.x - run.x, item.y - run.y) < PROP_REACH)
+}
 
 function readInput(): Input {
   let x = stick.x

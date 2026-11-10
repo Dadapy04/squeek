@@ -22,6 +22,10 @@ export function isRichOre(unit: { rarity?: string; metal?: string } | undefined)
   return !unit.metal && (unit.rarity === 'pusaka' || unit.rarity === 'legenda')
 }
 
+/** Field stall. Higher than the base shop, and only a bandage. */
+export const FIELD_PRICE = { bandage: 40, tonic: 32 } as const
+export const FIELD_BANDAGE_CAP = 7
+
 /** Buy price stays above the coins stored on the item, so resale cannot profit. */
 export const MERCHANT = {
   bandage: { buy: 24, coins: 8, rarity: 'biasa' as const },

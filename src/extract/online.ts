@@ -617,14 +617,17 @@ export async function noteDeath(depth: number): Promise<RunNotice> {
   }
 }
 
-export async function walletAct(path: string, body: unknown, apply = true): Promise<{ ok: boolean; reason?: string; gained?: number }> {
+export async function walletAct(path: string, body: unknown, apply = true): Promise<{ ok: boolean; reason?: string; gained?: number; coins?: number }> {
   if (!hooks || !walletLive()) return { ok: false, reason: 'offline' }
   try {
     const response = await api(path, { method: 'POST', body: JSON.stringify(body ?? {}) })
     const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; state?: unknown; gained?: number }
     if (apply && payload.state) hooks.setSave(saveFromBlob(JSON.stringify(payload.state)))
     if (!response.ok || payload.ok === false) return { ok: false, reason: payload.error }
-    return { ok: true, gained: payload.gained }
+    const coins = typeof (payload.state as { coins?: unknown } | undefined)?.coins === 'number'
+      ? (payload.state as { coins: number }).coins
+      : undefined
+    return { ok: true, gained: payload.gained, coins }
   } catch {
     setText('cloudStatus', t('online.offline'))
     return { ok: false, reason: 'offline' }
