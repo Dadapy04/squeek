@@ -66,7 +66,7 @@ describe('manual loot claim', () => {
     run.drops.push({ id: 'extra', kind: 'shard', x: 2, y: 2 })
     expect(claimLoot(run, 'extra', 'local')).toBe('full')
     expect(run.drops.map((drop) => drop.id)).toEqual(['extra'])
-    expect(run.floats.some((item) => item.text === 'tas penuh')).toBe(true)
+    expect(run.floats.some((item) => item.text === 'Tas penuh')).toBe(true)
   })
 
   it('gives the item to the first claimant only', () => {
@@ -79,14 +79,22 @@ describe('manual loot claim', () => {
     expect(claimLoot(run, 'race', 'bara')).toBe('missing')
   })
 
-  it('puts every chest item in the bag and loads an old drop without hover fields', () => {
+  it('spills a chest onto the floor and Take puts one item in the bag', () => {
     const run = runAt(CRATES[0]!.x, CRATES[0]!.y)
     run.zone = CRATES[0]!.zone
     step(run, { ...still, interact: true }, 0.05)
     expect(run.opened).toContain(CRATES[0]!.id)
-    expect(run.drops).toHaveLength(0)
-    expect(bagCount(run.bag)).toBe(CRATES[0]!.loot.length)
-    expect(run.floats.some((item) => item.text === t('loot.pocket', { name: t('item.scrap') }))).toBe(true)
+    expect(run.drops).toHaveLength(CRATES[0]!.loot.length)
+    expect(run.drops.every((drop) => (drop.hover ?? 0) > 0 && drop.fromX != null)).toBe(true)
+    expect(bagCount(run.bag)).toBe(0)
+    const first = run.drops[0]!
+    run.age = (first.born ?? 0) + 1
+    run.x = first.x
+    run.y = first.y
+    expect(claimTarget(run)?.id).toBe(first.id)
+    expect(claimLoot(run, first.id, 'local')).toBe('ok')
+    expect(bagCount(run.bag)).toBe(1)
+    expect(run.floats.some((item) => item.text === t('loot.got', { name: t(`item.${first.kind}` as 'item.scrap') }))).toBe(true)
     const store = {
       get length() { return 1 },
       clear() {},

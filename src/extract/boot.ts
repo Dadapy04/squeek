@@ -3,12 +3,12 @@ import { drawAssetSheet } from './patterns.ts'
 import { drawBlockStrip, drawCarryStrip, drawContactSheet, drawDirectionStrip, drawHoldStrip, drawSwingStrip, drawWalkStrip } from './pose.ts'
 import { paintTitleScreen, titleUsesDesktopPrompt } from './title.ts'
 import { clampCenter, followBase, stickVector } from './float-stick.ts'
-import { AUDIO_KEY, playSoulBurst, playSoulCharge, readAudioPref, resumeAudio } from './soul-audio.ts'
+import { AUDIO_KEY, playBoom, playFuseTick, playSoulBurst, playSoulCharge, readAudioPref, resumeAudio } from './soul-audio.ts'
 import { armAttack, attackLive, blockSecondTap, disarmAttack, holdReleased, type AttackBuffer } from './input-lock.ts'
 import { bossTitle, drawChestStrip, drawExtract, drawGallery, drawLootStrip, drawRevealStrip, setEffectBudget } from './view.ts'
 import { backingRatio } from './camera.ts'
 import { drawMapSheet } from './map-sprites.ts'
-import { drawFoeRoster } from './view.ts'
+import { drawBoomStrip, drawFoeRoster } from './view.ts'
 import { drawMinimap, reveal } from './minimap.ts'
 import { loadExtract, writeExtract } from './save.ts'
 import { ITEM_NAME, RARITY_COLOR, RARITY_NAME, STASH_SLOTS, type CoinRarity, type ItemUnit } from './coins.ts'
@@ -916,6 +916,8 @@ window.addEventListener('keyup', (event) => {
 
 let hudOpen = false
 let sheetHold = false
+let boomHeard = 0
+let fuseHeard = 0
 let last = performance.now()
 let sinceSave = 0
 let workEma = 8
@@ -981,6 +983,16 @@ function frame(now: number): void {
       }
       const cdBefore = save.run.attackCd
       const next = step(save.run, input, dt)
+      const ping = save.run?.boomPing ?? 0
+      if (ping !== boomHeard) {
+        boomHeard = ping
+        playBoom(audioPref())
+      }
+      const ticks = save.run?.fuseTick ?? 0
+      if (ticks !== fuseHeard) {
+        fuseHeard = ticks
+        playFuseTick(audioPref())
+      }
       attackBuffer = disarmAttack(attackBuffer, (save.run?.attackCd ?? 0) > cdBefore, now)
       if (soulNear(save.run) && (tap.claim || tap.interact)) claimSoul(save.run)
       else if (tap.claim && !bagFull(save.run)) {
@@ -1819,6 +1831,7 @@ declare global {
       reveal: () => string
       pose: (depth: number, kind: string) => { depth: number; theme: string; room: string; zone: string } | null
       mapSheet: () => void
+      boomSheet: () => void
       foeSheet: () => void
     }
   }
@@ -1895,6 +1908,15 @@ window.__npcsExtract = {
     board.width = 844
     board.height = 390
     drawMapSheet(pen, board.width, board.height)
+  },
+  boomSheet: () => {
+    sheetHold = true
+    const board = document.querySelector<HTMLCanvasElement>('#view')
+    const pen = board?.getContext('2d')
+    if (!board || !pen) return
+    board.width = 844
+    board.height = 390
+    drawBoomStrip(pen, board.width, board.height)
   },
   foeSheet: () => {
     sheetHold = true

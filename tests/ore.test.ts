@@ -6,7 +6,7 @@ import { COIN_BAND } from '../src/extract/coins.ts'
 import { upgradeOre } from '../src/extract/economy.ts'
 import { EXTRACT_SAVE_KEY, loadExtract } from '../src/extract/save.ts'
 import { generateFloor } from '../src/extract/dungeon.ts'
-import { count, deploy, freshSave, miningNoise, sellOne, step, upgradeGear, type Input } from '../src/extract/sim.ts'
+import { claimLoot, count, deploy, freshSave, miningNoise, sellOne, step, upgradeGear, type Input } from '../src/extract/sim.ts'
 
 const still: Input = { moveX: 0, moveY: 0, attack: false, dodge: false, interact: false, block: false, use: null, soul: false }
 
@@ -45,14 +45,18 @@ describe('mining', () => {
     }
     expect(vein.hp).toBe(0)
     expect(pulls.length).toBeGreaterThanOrEqual(4)
+    const dropped = run.drops.find((item) => item.kind === 'ore')
+    expect(dropped?.unit?.rarity).toBe(vein.rarity)
+    expect(dropped?.unit?.coins).toBeGreaterThanOrEqual(COIN_BAND[vein.rarity].min)
+    expect(dropped?.unit?.coins).toBeLessThanOrEqual(COIN_BAND[vein.rarity].max)
+    run.age = (dropped!.born ?? 0) + 1
+    run.x = dropped!.x
+    run.y = dropped!.y
+    expect(claimLoot(run, dropped!.id, 'local')).toBe('ok')
     const stack = run.bag.find((item) => item.kind === 'ore')
     expect(stack?.n).toBeGreaterThan(0)
-    const unit = stack?.units?.[0]
-    expect(unit?.rarity).toBe(vein.rarity)
-    expect(unit?.coins).toBeGreaterThanOrEqual(COIN_BAND[vein.rarity].min)
-    expect(unit?.coins).toBeLessThanOrEqual(COIN_BAND[vein.rarity].max)
     const metal = t(`ore.${vein.ore}` as 'ore.copper')
-    expect(run.floats.some((item) => item.text === t('loot.pocket', { name: t('loot.oreName', { metal }) }))).toBe(true)
+    expect(run.floats.some((item) => item.text === t('loot.got', { name: t('loot.oreName', { metal }) }))).toBe(true)
     expect(run.bagPulse ?? 0).toBeGreaterThan(0)
     const blocked = run.chart!.veins[0]!
     blocked.hp = 1
@@ -71,7 +75,13 @@ describe('mining', () => {
     expect(count(run.bag, 'ore')).toBe(0)
     const spilled = run.drops.find((drop) => drop.kind === 'ore')
     expect(spilled).toBeTruthy()
-    expect(Math.hypot(spilled!.x - run.x, spilled!.y - run.y)).toBeLessThan(28)
+    expect(Math.abs(spilled!.x)).toBeLessThanOrEqual(110 - 28)
+    run.age = (spilled!.born ?? 0) + 1
+    run.x = spilled!.x
+    run.y = spilled!.y
+    expect(claimLoot(run, spilled!.id, 'local')).toBe('full')
+    expect(count(run.bag, 'scrap')).toBe(12)
+    expect(run.drops.some((drop) => drop.id === spilled!.id)).toBe(true)
     expect(run.floats.some((item) => item.text === t('hud.bagFull'))).toBe(true)
   })
 

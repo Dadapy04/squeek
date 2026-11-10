@@ -10,6 +10,7 @@ import {
   STAIRS,
   stairHint,
   bankRun,
+  claimLoot,
   deploy,
   descendFloor,
   equipBlade,
@@ -116,6 +117,11 @@ describe('seven depths', () => {
     run.y = chest.y
     step(run, { ...still, interact: true }, 0.05)
     expect(strikeDamage(run)).toBe(34)
+    const bladeDrop = run.drops.find((drop) => drop.blade)!
+    run.age = (bladeDrop.born ?? 0) + 1
+    run.x = bladeDrop.x
+    run.y = bladeDrop.y
+    expect(claimLoot(run, bladeDrop.id, 'local')).toBe('ok')
     expect(run.foundBlades[0]?.damage).toBe(36)
     expect(strikeDamage(run)).toBe(34)
     expect(insureHeld(run, 'sword', undefined, undefined, run.foundBlades[0]!.id)).toBeNull()

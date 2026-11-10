@@ -59,6 +59,12 @@ export interface PropNode {
   lock: 'none' | 'key'
   /** Cracked walls start at 3. Missing means a fresh crack. */
   hp?: number
+  /** Seconds left on a lit barrel. Missing means the fuse is cold. */
+  fuse?: number
+  /** Length the current fuse started at, so the blink can speed up. */
+  fuseMax?: number
+  /** Seconds until the next fuse tick. Not required on old saves. */
+  tickAt?: number
 }
 
 export interface SpawnNode {

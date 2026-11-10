@@ -93,6 +93,17 @@ describe('prop interact', () => {
     run.facing = 0
     const hp = run.hp
     swing(run)
+    expect(front.state).toBe('live')
+    expect(front.fuse ?? 0).toBeGreaterThan(0.4)
+    expect(run.hp).toBe(hp)
+    expect(run.booms ?? []).toHaveLength(0)
+    let steps = 0
+    while (front.state === 'live' && steps < 24) {
+      step(run, still, 0.05)
+      steps += 1
+    }
+    expect(steps).toBeGreaterThanOrEqual(8)
+    expect(steps).toBeLessThanOrEqual(16)
     expect(front.state).toBe('spent')
     expect(run.hp).toBe(hp - 18)
     expect(run.booms?.length).toBeGreaterThan(0)
@@ -106,6 +117,8 @@ describe('prop interact', () => {
     const before = foe.hp
     again.facing = 0
     swing(again)
+    expect(foe.hp).toBe(before)
+    while (barrel.state === 'live') step(again, still, 0.05)
     expect(foe.hp).toBe(before - 24)
     const back = started()
     const rear = put(back, 'barrel', back.x - 28, back.y)

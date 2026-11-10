@@ -230,3 +230,57 @@ export function playSoulBurst(pref: AudioPref, host: AudioHost | null = typeof w
   verb.stop(now + 0.12)
   release(verb)
 }
+
+/** One accelerating click while a fuse is burning. */
+export function playFuseTick(pref: AudioPref, host: AudioHost | null = typeof window === 'undefined' ? null : window): void {
+  if (pref.muted || pref.volume <= 0) return
+  const ctx = context(host)
+  if (!ctx || !master) return
+  if (ctx.state === 'suspended') void ctx.resume()
+  const now = ctx.currentTime
+  const loud = Math.min(0.16, 0.1 * Math.max(0, Math.min(1, pref.volume)))
+  const click = ctx.createOscillator()
+  click.type = 'square'
+  click.frequency.setValueAtTime(880, now)
+  click.frequency.exponentialRampToValueAtTime(420, now + 0.04)
+  const gain = envGain(ctx, master, loud, 0.002, 0.008, 0.04, now)
+  const band = ctx.createBiquadFilter()
+  band.type = 'highpass'
+  band.frequency.value = 500
+  click.connect(band)
+  band.connect(gain)
+  click.start(now)
+  click.stop(now + 0.06)
+  release(click)
+}
+
+/** Short barrel blast. A low thump plus a noise crack, under the same limiter. */
+export function playBoom(pref: AudioPref, host: AudioHost | null = typeof window === 'undefined' ? null : window): void {
+  if (pref.muted || pref.volume <= 0) return
+  const ctx = context(host)
+  if (!ctx || !master) return
+  if (ctx.state === 'suspended') void ctx.resume()
+  const now = ctx.currentTime
+  const loud = Math.min(0.34, 0.22 * Math.max(0, Math.min(1, pref.volume)))
+  const thump = ctx.createOscillator()
+  thump.type = 'sine'
+  thump.frequency.setValueAtTime(150, now)
+  thump.frequency.exponentialRampToValueAtTime(42, now + 0.28)
+  const thumpGain = envGain(ctx, master, loud, 0.008, 0.04, 0.26, now)
+  thump.connect(thumpGain)
+  thump.start(now)
+  thump.stop(now + 0.34)
+  release(thump)
+  const crack = ctx.createBufferSource()
+  crack.buffer = noise(ctx, 0.18)
+  const band = ctx.createBiquadFilter()
+  band.type = 'lowpass'
+  band.frequency.setValueAtTime(1400, now)
+  band.frequency.exponentialRampToValueAtTime(240, now + 0.16)
+  const crackGain = envGain(ctx, master, loud * 0.7, 0.004, 0.02, 0.14, now)
+  crack.connect(band)
+  band.connect(crackGain)
+  crack.start(now)
+  crack.stop(now + 0.18)
+  release(crack)
+}

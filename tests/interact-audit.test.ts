@@ -49,8 +49,8 @@ describe('interact audit', () => {
     const crate = put(wood.run, 'crate')
     press(wood.run)
     expect(crate.state).toBe('spent')
-    expect(wood.run.bag.some((stack) => stack.kind === 'scrap')).toBe(true)
-    expect(wood.run.drops).toHaveLength(0)
+    expect(wood.run.drops.some((drop) => drop.kind === 'scrap')).toBe(true)
+    expect(wood.run.bag.some((stack) => stack.kind === 'scrap')).toBe(false)
 
     const bar = runOf()
     const lever = put(bar.run, 'lever')
@@ -67,13 +67,16 @@ describe('interact audit', () => {
     press(locked.run)
     expect(chest.state).toBe('open')
     expect(locked.run.keys).toBe(0)
-    expect(locked.run.bag.some((stack) => stack.kind === 'scrap')).toBe(true)
-    expect(locked.run.drops).toHaveLength(0)
+    expect(locked.run.drops.some((drop) => drop.kind === 'scrap')).toBe(true)
+    expect(locked.run.bag.some((stack) => stack.kind === 'scrap')).toBe(false)
 
     const boom = runOf()
     const barrel = put(boom.run, 'barrel')
     const hp = boom.run.hp
     press(boom.run)
+    expect(barrel.state).toBe('live')
+    expect(boom.run.hp).toBe(hp)
+    for (let i = 0; i < 24 && barrel.state === 'live'; i += 1) step(boom.run, still, 0.05)
     expect(barrel.state).toBe('spent')
     expect(boom.run.hp).toBe(hp - 18)
 
@@ -88,7 +91,7 @@ describe('interact audit', () => {
     shop.save.coins = 40
     expect(fieldBuy(shop.save, 'bandage')).toBe('')
     expect(shop.run.bag.some((stack) => stack.kind === 'bandage')).toBe(true)
-    expect(shop.run.floats.some((item) => item.text === '+ Bandage → Bag')).toBe(true)
+    expect(shop.run.floats.some((item) => item.text === '+ Bandage')).toBe(true)
     expect(shop.save.coins).toBe(0)
     expect(vendor.state).toBe('spent')
 

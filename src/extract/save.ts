@@ -187,6 +187,12 @@ function chartOf(raw: Partial<Run>, depth: number, seed: number): FloorChart {
       if (!hit) continue
       if (hit.state === 'spent' || hit.state === 'open' || hit.state === 'live') prop.state = hit.state
       if (typeof hit.hp === 'number' && Number.isFinite(hit.hp)) prop.hp = Math.max(0, Math.min(3, Math.floor(hit.hp)))
+      const fuse = (hit as { fuse?: unknown }).fuse
+      if (typeof fuse === 'number' && Number.isFinite(fuse) && fuse > 0) {
+        prop.fuse = Math.min(2, fuse)
+        const fuseMax = (hit as { fuseMax?: unknown }).fuseMax
+        prop.fuseMax = typeof fuseMax === 'number' && Number.isFinite(fuseMax) && fuseMax > 0 ? Math.min(2, fuseMax) : prop.fuse
+      }
     }
   }
   return chart
@@ -356,6 +362,8 @@ function drops(value: unknown): Run['drops'] {
     if (typeof extra.claimedBy === 'string' && extra.claimedBy) drop.claimedBy = extra.claimedBy
     if (typeof extra.fromX === 'number' && Number.isFinite(extra.fromX)) drop.fromX = extra.fromX
     if (typeof extra.fromY === 'number' && Number.isFinite(extra.fromY)) drop.fromY = extra.fromY
+    const ore = (row as { ore?: unknown }).ore
+    if (typeof ore === 'string' && ore.length > 0 && ore.length < 16) drop.ore = ore
     const spear = asSpear((row as { spear?: unknown }).spear)
     if (drop.kind === 'tombak' && spear) drop.spear = spear
     if (typeof (row as { unit?: unknown }).unit === 'object') drop.unit = readUnit((row as { unit?: unknown }).unit, drop.kind, drop.id.length + 1)

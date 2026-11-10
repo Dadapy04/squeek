@@ -19,6 +19,12 @@ export const ZONE_W = 220
 export const ZONE_H = 300
 export const PLAYER_R = 12
 export const SWING_REACH = 46
+/** Barrel blast, in world pixels. The painted ring uses this same radius. */
+export const BLAST_RADIUS = 52
+/** A slash or a shove lights the barrel for this long before it blows. */
+export const FUSE_TIME = 1
+/** A barrel inside another blast uses this shorter fuse. */
+export const CHAIN_FUSE = 0.3
 /** Extra reach so a swing connects with the centipede's head, not only a point. */
 export const BOSS_RADIUS = 18
 export const CENTIPEDE_LINKS = 10
@@ -84,6 +90,8 @@ export interface Drop {
   blade?: Blade
   /** Coin roll kept on this drop so a reload does not reroll it. */
   unit?: ItemUnit
+  /** Metal name for ore that spilled out of a vein. */
+  ore?: string
   /** Just dropped at the player's feet. Ignored by Ambil until they step away. */
   handsOff?: boolean
 }
@@ -166,6 +174,12 @@ export interface Run {
   /** Chip debris and barrel bursts. Not stored. */
   bits?: { x: number; y: number; vx: number; vy: number; life: number }[]
   booms?: { x: number; y: number; life: number }[]
+  /** Seconds of blast shake. Not stored. */
+  shake?: number
+  /** Counts barrel blasts so the boom can play once. Not stored. */
+  boomPing?: number
+  /** Counts fuse ticks so the click can play once per beat. Not stored. */
+  fuseTick?: number
 }
 
 export interface ExtractSave {
@@ -408,6 +422,23 @@ export function carriedCount(run: Run): number {
 
 function spoken(kind: ItemKind): string {
   return t(`item.short.${kind}` as 'item.short.sword')
+}
+
+/** Name shown on a ground drop and in the pickup float. */
+export function lootTitle(drop: Pick<Drop, 'kind' | 'ore' | 'blade'>): string {
+  if (drop.blade) return bladeDisplay(drop.blade.id, drop.blade.name)
+  if (drop.kind === 'tombak') return t('item.tombak')
+  if (drop.kind === 'ore' && drop.ore) {
+    const metal = t(`ore.${drop.ore}` as 'ore.copper')
+    const shown = currentLocale() === 'id' ? metal.toLowerCase() : metal
+    return t('loot.oreName', { metal: shown })
+  }
+  return t(`item.${drop.kind}` as 'item.scrap')
+}
+
+function notePickup(run: Run, name: string): void {
+  pulseBag(run)
+  float(run, t('loot.got', { name }))
 }
 
 export const LOCAL_VALUE: Record<ItemKind, number> = {
@@ -1338,6 +1369,7 @@ export function step(run: Run, input: Input, dt: number): StepResult {
   run.breakFx = Math.max(0, run.breakFx - h)
   run.age += h
   run.bagPulse = Math.max(0, (run.bagPulse ?? 0) - h)
+  run.shake = Math.max(0, (run.shake ?? 0) - h)
   for (const item of run.floats) item.life -= h
   run.floats = run.floats.filter((item) => item.life > 0)
 
@@ -1640,40 +1672,40 @@ export function claimLoot(run: Run, itemId: string, claimant: string): ClaimResu
   if (Math.hypot(drop.x - run.x, drop.y - run.y) > PICKUP_RADIUS) return 'far'
   if (drop.blade) {
     if (!slotFree(run)) {
-      float(run, t('hit.full'))
+      float(run, t('hud.bagFull'))
       return 'full'
     }
     run.foundBlades = [...(run.foundBlades ?? []), drop.blade]
     drop.claimedBy = claimant
     run.drops = run.drops.filter((item) => item.id !== itemId)
-    float(run, bladeDisplay(drop.blade.id, drop.blade.name))
+    notePickup(run, lootTitle(drop))
     return 'ok'
   }
   if (drop.kind === 'tombak') {
     if (!slotFree(run)) {
-      float(run, t('hit.full'))
+      float(run, t('hud.bagFull'))
       return 'full'
     }
     const spear = drop.spear ?? rollSpear(drop.id.length * 17 + Math.floor(drop.x))
     run.found = [...(run.found ?? []), spear]
     drop.claimedBy = claimant
     run.drops = run.drops.filter((item) => item.id !== itemId)
-    float(run, t('item.short.tombak'))
+    notePickup(run, lootTitle(drop))
     return 'ok'
   }
   if (drop.unit) {
     if (!slotFree(run)) {
-      float(run, t('hit.full'))
+      float(run, t('hud.bagFull'))
       return 'full'
     }
     addUnits(run.bag, drop.kind, [drop.unit])
   } else if (!give(run, drop.kind, mixSeed(drop.id.length * 131 + Math.floor(drop.x)))) {
-    float(run, t('hit.full'))
+    float(run, t('hud.bagFull'))
     return 'full'
   }
   drop.claimedBy = claimant
   run.drops = run.drops.filter((item) => item.id !== itemId)
-  float(run, spoken(drop.kind))
+  notePickup(run, lootTitle(drop))
   return 'ok'
 }
 
@@ -1692,16 +1724,25 @@ function openNear(run: Run): void {
 function openContainer(run: Run, crate: Crate): void {
   if (run.opened.includes(crate.id)) return
   run.opened.push(crate.id)
+  const total = crate.loot.length + (crate.blade ? 1 : 0)
   crate.loot.forEach((kind, index) => {
     const id = `${crate.id}-${kind}-${index}`
     if (kind === 'tombak') {
-      pocketSpear(run, crate.spear ?? rollSpear(run.seed * 13 + index + 1), id)
+      layDrop(run, {
+        id,
+        kind,
+        x: 0,
+        y: 0,
+        spear: crate.spear ?? rollSpear(run.seed * 13 + index + 1),
+      }, crate.x, crate.y, index, total)
       return
     }
     const unit = crate.blade ? bossUnit(run, kind, index) : mintUnit(kind, mixSeed(crate.id.length * 17 + index * 13 + (run.seed || 1)), 'loot')
-    pocketUnit(run, kind, unit, id)
+    layDrop(run, { id, kind, x: 0, y: 0, unit }, crate.x, crate.y, index, total)
   })
-  if (crate.blade) pocketBlade(run, crate.blade, `${crate.id}-blade`)
+  if (crate.blade) {
+    layDrop(run, { id: `${crate.id}-blade`, kind: 'sword', x: 0, y: 0, blade: crate.blade }, crate.x, crate.y, crate.loot.length, total)
+  }
 }
 
 function bossUnit(run: Run, kind: ItemKind, index: number): ItemUnit {
@@ -2210,6 +2251,7 @@ function tickDungeon(run: Run, dt: number): void {
   run.gloom = room.event === 'dark' ? 1 : 0
   tickEvent(run, room)
   tickHazard(run, room)
+  tickFuses(run, dt)
   tryDoor(run, room)
 }
 
@@ -2349,7 +2391,14 @@ function grantVein(run: Run, vein: VeinNode): void {
   const need = vein.big ? 3 : 1
   for (let i = 0; i < need; i += 1) {
     const coins = oreValue(vein.rarity, mixSeed(vein.id.length * 19 + (run.seed || 1) + i * 5))
-    pocketUnit(run, 'ore', { rarity: vein.rarity, coins, origin: 'loot' }, `ore-${vein.id}-${i}`, vein.ore)
+    layDrop(run, {
+      id: `ore-${vein.id}-${i}`,
+      kind: 'ore',
+      x: 0,
+      y: 0,
+      ore: vein.ore,
+      unit: { rarity: vein.rarity, coins, origin: 'loot' },
+    }, vein.x, vein.y, i, need)
   }
 }
 
@@ -2413,7 +2462,7 @@ function strikeBarrels(run: Run, lo: number, hi: number): void {
     if (run.swingHit.includes(prop.id)) continue
     if (!slashHits(run, prop.x, prop.y, BARREL_R, lo, hi)) continue
     run.swingHit.push(prop.id)
-    blowBarrel(run, prop)
+    lightFuse(run, prop, FUSE_TIME)
   }
 }
 
@@ -2429,19 +2478,63 @@ function strikeCracks(run: Run, lo: number, hi: number): void {
   }
 }
 
+function fuseInterval(left: number, max: number): number {
+  const k = Math.max(0, Math.min(1, left / Math.max(0.05, max)))
+  return 0.08 + 0.24 * k
+}
+
+/** Starts or shortens a barrel fuse. A shorter fuse already burning is left alone. */
+function lightFuse(run: Run, prop: PropNode, seconds: number): void {
+  if (prop.kind !== 'barrel' || prop.state !== 'live') return
+  if (prop.fuse != null && prop.fuse > 0 && prop.fuse <= seconds + 0.001) return
+  prop.fuse = seconds
+  prop.fuseMax = seconds
+  prop.tickAt = fuseInterval(seconds, seconds)
+  run.fuseTick = (run.fuseTick ?? 0) + 1
+}
+
+function tickFuses(run: Run, dt: number): void {
+  const chart = run.chart
+  if (!chart) return
+  const due: PropNode[] = []
+  for (const prop of chart.props) {
+    if (prop.kind !== 'barrel' || prop.state !== 'live' || prop.fuse == null || prop.fuse <= 0) continue
+    prop.fuse -= dt
+    prop.tickAt = (prop.tickAt ?? 0) - dt
+    if (prop.tickAt <= 0 && prop.fuse > 0) {
+      run.fuseTick = (run.fuseTick ?? 0) + 1
+      prop.tickAt = fuseInterval(prop.fuse, prop.fuseMax ?? prop.fuse)
+    }
+    if (prop.fuse <= 0) due.push(prop)
+  }
+  for (const prop of due) {
+    if (prop.state === 'live') blowBarrel(run, prop)
+  }
+}
+
 function blowBarrel(run: Run, prop: PropNode): void {
   prop.state = 'spent'
+  prop.fuse = 0
   float(run, t('room.boom'))
   spillLoot(run, prop)
-  run.booms = [...(run.booms ?? []), { x: prop.x, y: prop.y, life: 0.45 }]
-  hurtPlayer(run, 18, prop.x, prop.y)
+  run.shake = 0.22
+  run.boomPing = (run.boomPing ?? 0) + 1
+  run.booms = [...(run.booms ?? []), { x: prop.x, y: prop.y, life: 0.5 }]
+  if (Math.hypot(run.x - prop.x, run.y - prop.y) <= BLAST_RADIUS) hurtPlayer(run, 18, prop.x, prop.y)
   for (const foe of run.foes) {
     if (foe.zone !== run.zone || foe.hp <= 0 || run.slain.includes(foe.id)) continue
     if (run.zone === 'kamar' && foe.room && foe.room !== run.roomId) continue
-    if (Math.hypot(foe.x - prop.x, foe.y - prop.y) > 52) continue
+    if (Math.hypot(foe.x - prop.x, foe.y - prop.y) > BLAST_RADIUS) continue
     foe.hp -= 24
     foe.flash = 0.2
     if (foe.hp <= 0) slayFoe(run, foe)
+  }
+  const chart = run.chart
+  if (!chart) return
+  for (const other of chart.props) {
+    if (other === prop || other.kind !== 'barrel' || other.state !== 'live' || other.room !== prop.room) continue
+    if (Math.hypot(other.x - prop.x, other.y - prop.y) > BLAST_RADIUS + BARREL_R) continue
+    lightFuse(run, other, CHAIN_FUSE)
   }
 }
 
@@ -2536,7 +2629,7 @@ function useProps(run: Run): boolean {
     return true
   }
   if (prop.kind === 'barrel') {
-    blowBarrel(run, prop)
+    lightFuse(run, prop, FUSE_TIME)
     return true
   }
   if (prop.kind === 'vendor') return false
@@ -2547,68 +2640,53 @@ function spillLoot(run: Run, prop: PropNode): void {
   prop.loot.forEach((kind, index) => {
     const rarity = kind === 'relic' ? 'pusaka' : kind === 'shard' ? 'langka' : 'biasa'
     const coins = oreValue(rarity, mixSeed(prop.id.length + index))
-    pocketUnit(run, kind, { rarity, coins, origin: 'loot' }, `${prop.id}-${kind}-${index}`)
+    layDrop(run, {
+      id: `${prop.id}-${kind}-${index}`,
+      kind,
+      x: 0,
+      y: 0,
+      unit: { rarity, coins, origin: 'loot' },
+    }, prop.x, prop.y, index, prop.loot.length)
   })
 }
 
-function pocketName(kind: ItemKind, ore?: string): string {
-  if (kind === 'ore' && ore) {
-    const metal = t(`ore.${ore}` as 'ore.copper')
-    const shown = currentLocale() === 'id' ? metal.toLowerCase() : metal
-    return t('loot.oreName', { metal: shown })
+/** Keeps a spilled item on the open floor, a short step away from its source. */
+function floorSpot(x: number, y: number): { x: number; y: number } {
+  const edgeX = ZONE_W / 2 - 28
+  const edgeY = ZONE_H / 2 - 28
+  return {
+    x: Math.max(-edgeX, Math.min(edgeX, x)),
+    y: Math.max(-edgeY, Math.min(edgeY, y)),
   }
-  return t(`item.${kind}` as 'item.scrap')
 }
 
-function beside(run: Run, index: number): { x: number; y: number } {
-  const ang = -Math.PI / 2 + index * 0.7
-  const margin = 20
-  return {
-    x: Math.max(-ZONE_W / 2 + margin, Math.min(ZONE_W / 2 - margin, run.x + Math.cos(ang) * 16)),
-    y: Math.max(-ZONE_H / 2 + margin, Math.min(ZONE_H / 2 - margin, run.y + Math.sin(ang) * 12)),
-  }
+function layDrop(run: Run, drop: Drop, fromX: number, fromY: number, index: number, count: number): void {
+  const ang = -Math.PI / 2 + (index - (Math.max(1, count) - 1) / 2) * 0.7
+  const dist = count <= 1 ? 12 : 14
+  const spot = floorSpot(fromX + Math.cos(ang) * dist, fromY + Math.sin(ang) * dist * 0.8)
+  drop.x = spot.x
+  drop.y = spot.y
+  drop.born = run.age
+  drop.hover = 0.58
+  drop.fromX = fromX
+  drop.fromY = fromY
+  run.drops.push(drop)
 }
 
 function pulseBag(run: Run): void {
   run.bagPulse = 0.45
 }
 
-/** Puts one carried item in the bag. A full bag leaves it on the ground next to the hamster. */
-function pocketUnit(run: Run, kind: ItemKind, unit: ItemUnit, id: string, ore?: string): void {
+/** Seller goods go into the bag. A full bag leaves the purchase on the stall floor. */
+function pocketUnit(run: Run, kind: ItemKind, unit: ItemUnit, id: string): void {
   if (kind === 'sword') return
   if (slotFree(run)) {
     addUnits(run.bag, kind, [unit])
-    pulseBag(run)
-    float(run, t('loot.pocket', { name: pocketName(kind, ore) }))
+    notePickup(run, lootTitle({ kind }))
     return
   }
-  const at = beside(run, run.drops.length)
-  run.drops.push({ id, kind, x: at.x, y: at.y, born: run.age, handsOff: true, unit })
+  layDrop(run, { id, kind, x: 0, y: 0, unit }, run.x, run.y, run.drops.length, 1)
   float(run, t('hud.bagFull'))
-}
-
-function pocketSpear(run: Run, spear: Spear, id: string): void {
-  if (!slotFree(run)) {
-    const at = beside(run, run.drops.length)
-    run.drops.push({ id, kind: 'tombak', x: at.x, y: at.y, born: run.age, handsOff: true, spear })
-    float(run, t('hud.bagFull'))
-    return
-  }
-  run.found = [...(run.found ?? []), spear]
-  pulseBag(run)
-  float(run, t('loot.pocket', { name: t('item.tombak') }))
-}
-
-function pocketBlade(run: Run, blade: Blade, id: string): void {
-  if (!slotFree(run)) {
-    const at = beside(run, run.drops.length)
-    run.drops.push({ id, kind: 'sword', x: at.x, y: at.y, born: run.age, handsOff: true, blade })
-    float(run, t('hud.bagFull'))
-    return
-  }
-  run.foundBlades = [...(run.foundBlades ?? []), blade]
-  pulseBag(run)
-  float(run, t('loot.pocket', { name: bladeDisplay(blade.id, blade.name) }))
 }
 
 export const FIELD_PRICE = { bandage: 40, tonic: 32 } as const
@@ -2621,7 +2699,7 @@ export function fieldBuy(save: ExtractSave, kind: 'bandage' | 'tonic'): string {
   const price = FIELD_PRICE[kind]
   if (save.coins < price) return t('shop.poor')
   save.coins -= price
-  pocketUnit(run, kind, { rarity: 'biasa', coins: kind === 'bandage' ? 8 : 6, origin: 'loot' }, `vendor-${kind}-${Math.floor(run.age * 1000)}`)
+  pocketUnit(run, kind, { rarity: 'biasa', coins: kind === 'bandage' ? 8 : 6, origin: 'loot' }, `vendor-${kind}-${Math.floor(run.age * 1000)}-${run.x}`)
   vendor.state = 'spent'
   return ''
 }

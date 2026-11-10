@@ -6,8 +6,13 @@ import { upgradeOre } from '../src/extract/economy.ts'
 setLocale('en')
 import {
   BAG_SLOTS,
+  BLAST_RADIUS,
   EXTRACT_TIME,
+  ZONE_H,
+  ZONE_W,
   bankRun,
+  claimLoot,
+  claimTarget,
   count,
   deploy,
   fieldBuy,
@@ -64,16 +69,22 @@ function place(run: Run, kind: PropNode['kind'], loot: PropNode['loot'], extra: 
   return prop
 }
 
-function fill(run: Run): void {
-  for (let i = 0; i < BAG_SLOTS; i += 1) expect(give(run, 'scrap')).toBe(true)
+function take(run: Run, id: string): void {
+  const drop = run.drops.find((item) => item.id === id)!
+  run.age = (drop.born ?? 0) + 1
+  run.x = drop.x
+  run.y = drop.y
+  expect(claimTarget(run)?.id).toBe(id)
+  expect(claimLoot(run, id, 'local')).toBe('ok')
 }
 
-function pocketText(name: string): string {
-  return t('loot.pocket', { name })
+function onFloor(x: number, y: number): void {
+  expect(Math.abs(x)).toBeLessThanOrEqual(ZONE_W / 2 - 28)
+  expect(Math.abs(y)).toBeLessThanOrEqual(ZONE_H / 2 - 28)
 }
 
-describe('activity loot goes into the bag', () => {
-  it('pockets a broken vein and names the ore', () => {
+describe('activity loot drops for Take', () => {
+  it('drops vein ore on the floor and Take puts it in the bag', () => {
     const { run } = start()
     const vein = run.chart!.veins[0]!
     quiet(run)
@@ -82,20 +93,26 @@ describe('activity loot goes into the bag', () => {
     stand(run, vein.x - 20, vein.y, vein.zone, vein.room)
     press(run)
     expect(vein.hp).toBe(0)
+    expect(run.bag.some((stack) => stack.kind === 'ore')).toBe(false)
+    const drop = run.drops.find((item) => item.kind === 'ore')!
+    expect(drop.ore).toBe('copper')
+    expect(drop.hover).toBeGreaterThan(0)
+    expect(drop.fromX).toBe(vein.x)
+    onFloor(drop.x, drop.y)
+    expect(claimTarget(run)).toBeNull()
+    take(run, drop.id)
     const stack = run.bag.find((item) => item.kind === 'ore')
     expect(stack?.n).toBe(1)
     expect(stack?.units?.[0]?.origin).toBe('loot')
-    expect(stack?.units?.[0]?.rarity).toBe(vein.rarity)
     expect(ITEM_NAME.ore).toBe('Ore')
-    expect(run.drops).toHaveLength(0)
-    expect(run.floats.some((item) => item.text === pocketText(t('loot.oreName', { metal: 'Copper' })))).toBe(true)
+    expect(run.floats.some((item) => item.text === t('loot.got', { name: 'Copper ore' }))).toBe(true)
     expect(run.bagPulse ?? 0).toBeGreaterThan(0)
   })
 
-  it('pockets three pieces from a big gold vein and spills only the overflow', () => {
+  it('spreads a big gold vein into three ground drops and refuses a full bag', () => {
     const { run } = start()
     quiet(run)
-    for (let i = 0; i < BAG_SLOTS - 1; i += 1) expect(give(run, 'scrap')).toBe(true)
+    for (let i = 0; i < BAG_SLOTS; i += 1) expect(give(run, 'scrap')).toBe(true)
     const vein: VeinNode = {
       id: 'vein-big-test',
       room: run.roomId ?? 'room-start',
@@ -111,22 +128,28 @@ describe('activity loot goes into the bag', () => {
     run.chart!.veins.push(vein)
     press(run)
     expect(vein.hp).toBe(0)
-    expect(count(run.bag, 'ore')).toBe(1)
-    expect(run.drops.filter((drop) => drop.kind === 'ore')).toHaveLength(2)
-    expect(Math.hypot(run.drops[0]!.x - run.x, run.drops[0]!.y - run.y)).toBeLessThan(28)
-    expect(run.floats.some((item) => item.text === pocketText(t('loot.oreName', { metal: 'Gold' })))).toBe(true)
-    expect(run.floats.some((item) => item.text === t('hud.bagFull'))).toBe(true)
+    const ore = run.drops.filter((drop) => drop.kind === 'ore')
+    expect(ore).toHaveLength(3)
+    expect(new Set(ore.map((drop) => `${drop.x},${drop.y}`)).size).toBe(3)
+    ore.forEach((drop) => onFloor(drop.x, drop.y))
+    run.age = (ore[0]!.born ?? 0) + 1
+    run.x = ore[0]!.x
+    run.y = ore[0]!.y
+    expect(claimTarget(run)?.id).toBe(ore[0]!.id)
+    expect(claimLoot(run, ore[0]!.id, 'local')).toBe('full')
+    expect(count(run.bag, 'scrap')).toBe(BAG_SLOTS)
+    expect(run.drops.some((drop) => drop.id === ore[0]!.id)).toBe(true)
+    expect(run.floats.some((item) => item.text === 'Bag full')).toBe(true)
   })
 
-  it('pockets a crate, a chest, a secret chest, and a barrel drop', () => {
+  it('drops crate, chest, secret chest, and barrel loot for Take', () => {
     const wood = start()
     const crate = place(wood.run, 'crate', ['scrap', 'bandage'])
     press(wood.run)
     expect(crate.state).toBe('spent')
-    expect(count(wood.run.bag, 'scrap')).toBe(1)
-    expect(count(wood.run.bag, 'bandage')).toBe(1)
-    expect(wood.run.drops).toHaveLength(0)
-    expect(wood.run.floats.some((item) => item.text === pocketText(t('item.scrap')))).toBe(true)
+    expect(wood.run.drops.map((drop) => drop.kind).sort()).toEqual(['bandage', 'scrap'])
+    take(wood.run, wood.run.drops[0]!.id)
+    expect(count(wood.run.bag, wood.run.drops.length ? 'scrap' : 'scrap') + count(wood.run.bag, 'bandage')).toBe(1)
 
     const locked = start()
     const chest = place(locked.run, 'chest', ['relic'], { lock: 'key' })
@@ -135,8 +158,9 @@ describe('activity loot goes into the bag', () => {
     locked.run.keys = 1
     press(locked.run)
     expect(chest.state).toBe('open')
+    expect(locked.run.drops.some((drop) => drop.kind === 'relic')).toBe(true)
+    take(locked.run, locked.run.drops[0]!.id)
     expect(count(locked.run.bag, 'relic')).toBe(1)
-    expect(locked.run.drops).toHaveLength(0)
 
     const hidden = start()
     warpFloor(hidden.run, 2)
@@ -146,46 +170,39 @@ describe('activity loot goes into the bag', () => {
     stand(hidden.run, secret.x - 16, secret.y, secret.zone, secret.room)
     press(hidden.run)
     expect(secret.state).toBe('open')
-    expect(secret.loot.every((kind) => count(hidden.run.bag, kind) > 0)).toBe(true)
-    expect(hidden.run.drops).toHaveLength(0)
+    expect(hidden.run.drops.map((drop) => drop.kind).sort()).toEqual([...secret.loot].sort())
+    hidden.run.drops.forEach((drop) => onFloor(drop.x, drop.y))
 
     const blast = start()
-    const barrel = place(blast.run, 'barrel', ['shard', 'ore'])
+    const barrel = place(blast.run, 'barrel', ['shard'])
     const hp = blast.run.hp
     press(blast.run)
+    expect(barrel.state).toBe('live')
+    expect(blast.run.hp).toBe(hp)
+    expect(blast.run.drops).toHaveLength(0)
+    for (let i = 0; i < 24 && barrel.state === 'live'; i += 1) step(blast.run, still, 0.05)
     expect(barrel.state).toBe('spent')
     expect(blast.run.hp).toBe(hp - 18)
+    expect(blast.run.booms?.[0]?.life).toBe(0.5)
+    expect(blast.run.shake ?? 0).toBeGreaterThan(0)
+    const shard = blast.run.drops.find((drop) => drop.kind === 'shard')!
+    expect(Math.hypot(shard.x - barrel.x, shard.y - barrel.y)).toBeLessThan(BLAST_RADIUS)
+    take(blast.run, shard.id)
     expect(count(blast.run.bag, 'shard')).toBe(1)
-    expect(count(blast.run.bag, 'ore')).toBe(1)
-    expect(blast.run.drops).toHaveLength(0)
-    expect(blast.run.floats.some((item) => item.text === pocketText(t('item.shard')))).toBe(true)
   })
 
-  it('pockets a vendor purchase and drops it beside the player when the bag is full', () => {
+  it('keeps a vendor purchase in the bag', () => {
     const shop = start()
-    const vendor = place(shop.run, 'vendor', [], { x: shop.run.x + 16, y: shop.run.y })
+    place(shop.run, 'vendor', [], { x: shop.run.x + 16, y: shop.run.y })
     shop.save.coins = 40
     expect(fieldBuy(shop.save, 'bandage')).toBe('')
     expect(shop.save.coins).toBe(0)
-    expect(vendor.state).toBe('spent')
-    const bought = shop.run.bag.find((stack) => stack.kind === 'bandage')?.units?.[0]
-    expect(bought?.coins).toBe(8)
-    expect(shop.run.floats.some((item) => item.text === pocketText(t('item.bandage')))).toBe(true)
-
-    const packed = start()
-    place(packed.run, 'vendor', [], { x: packed.run.x + 16, y: packed.run.y })
-    fill(packed.run)
-    packed.save.coins = 32
-    expect(fieldBuy(packed.save, 'tonic')).toBe('')
-    expect(packed.save.coins).toBe(0)
-    expect(count(packed.run.bag, 'tonic')).toBe(0)
-    const drop = packed.run.drops.find((item) => item.kind === 'tonic')
-    expect(drop?.unit?.coins).toBe(6)
-    expect(Math.hypot(drop!.x - packed.run.x, drop!.y - packed.run.y)).toBeLessThan(28)
-    expect(packed.run.floats.some((item) => item.text === t('hud.bagFull'))).toBe(true)
+    expect(count(shop.run.bag, 'bandage')).toBe(1)
+    expect(shop.run.drops).toHaveLength(0)
+    expect(shop.run.floats.some((item) => item.text === '+ Bandage')).toBe(true)
   })
 
-  it('pockets the boss chest spear, bonus, and blade', () => {
+  it('drops the boss chest and Take collects the spear, bonus, and blade', () => {
     const { run } = start()
     const boss = run.foes.find((foe) => foe.kind === 'boss')!
     boss.hp = 10
@@ -199,16 +216,27 @@ describe('activity loot goes into the bag', () => {
     for (const prop of run.chart?.props ?? []) prop.state = 'spent'
     stand(run, chest.x, chest.y, chest.zone, 'room-boss')
     press(run)
-    expect(run.opened).toContain(chest.id)
+    expect(run.found).toHaveLength(0)
+    expect(run.foundBlades ?? []).toHaveLength(0)
+    const ids = [...run.drops.map((drop) => drop.id)]
+    expect(ids.length).toBe(3)
+    for (const id of ids) take(run, id)
     expect(run.found.some((spear) => spear.id === chest.spear?.id)).toBe(true)
-    expect(run.foundBlades.some((blade) => blade.id === chest.blade?.id)).toBe(true)
+    expect(run.foundBlades?.some((blade) => blade.id === chest.blade?.id)).toBe(true)
     expect(count(run.bag, chest.loot.find((kind) => kind !== 'tombak')!)).toBe(1)
-    expect(run.drops).toHaveLength(0)
-    expect(run.floats.some((item) => item.text === pocketText(t('item.tombak')))).toBe(true)
-    expect((run.bagPulse ?? 0) > 0).toBe(true)
   })
 
-  it('keeps mined ore through extraction, sale, and the workshop', () => {
+  it('clamps a drop that would have landed in the wall', () => {
+    const { run } = start()
+    quiet(run)
+    const prop = place(run, 'crate', ['scrap', 'ore', 'bandage'], { x: ZONE_W / 2 - 6, y: 10 })
+    stand(run, prop.x - 30, prop.y, prop.zone, prop.room)
+    press(run)
+    expect(run.drops.length).toBe(3)
+    run.drops.forEach((drop) => onFloor(drop.x, drop.y))
+  })
+
+  it('keeps taken ore through extraction, sale, and the workshop', () => {
     const { save, run } = start()
     quiet(run)
     const vein: VeinNode = {
@@ -225,7 +253,9 @@ describe('activity loot goes into the bag', () => {
     }
     run.chart!.veins.push(vein)
     press(run)
-    const coins = run.bag.find((stack) => stack.kind === 'ore')!.units![0]!.coins
+    const drop = run.drops.find((item) => item.kind === 'ore')!
+    const coins = drop.unit!.coins
+    take(run, drop.id)
     run.zone = 'pangkalan'
     run.x = 0
     run.y = -80
@@ -239,12 +269,11 @@ describe('activity loot goes into the bag', () => {
     expect(upgradeOre(1)).toBe(0)
     expect(upgradeGear(save, 'sword')).toMatchObject({ ok: true, level: 2 })
     expect(count(save.stash, 'ore')).toBe(1)
-    expect(upgradeOre(2)).toBe(1)
     expect(upgradeGear(save, 'sword')).toMatchObject({ ok: true, level: 3 })
     expect(count(save.stash, 'ore')).toBe(0)
   })
 
-  it('says Bijih tembaga in Indonesian', () => {
+  it('says + Bijih tembaga when the ore is taken in Indonesian', () => {
     setLocale('id')
     const { run } = start()
     const vein = run.chart!.veins[0]!
@@ -253,14 +282,9 @@ describe('activity loot goes into the bag', () => {
     vein.ore = 'copper'
     stand(run, vein.x - 20, vein.y, vein.zone, vein.room)
     press(run)
-    expect(run.floats.some((item) => item.text === '+ Bijih tembaga → Tas')).toBe(true)
-    while (give(run, 'scrap')) { /* fill the remaining slots */ }
-    const again = vein
-    again.hp = 1
-    again.x = run.x + 18
-    again.y = run.y
-    press(run)
-    expect(run.floats.some((item) => item.text === 'Tas penuh')).toBe(true)
+    const drop = run.drops.find((item) => item.kind === 'ore')!
+    take(run, drop.id)
+    expect(run.floats.some((item) => item.text === '+ Bijih tembaga')).toBe(true)
     setLocale('en')
   })
 })

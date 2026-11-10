@@ -8,7 +8,7 @@ import { t } from './i18n.ts'
 import { roomAt, themeFor } from './dungeon.ts'
 import { foeCanvas, hasFoeSprite } from './foe-sprites.ts'
 import { blitMotif, interactable, mapLabel, spriteIdFor } from './map-sprites.ts'
-import { EXTRACT_ZONE, FOE_SPOTS, NEST_DOOR, SOUL_CAST, SOUL_RADIUS, STAIRS, SWING_REACH, ZONE_H, ZONE_W, claimTarget, depthMods, foeView, isSpecial, nestGap, runCrates, stairsOpen, syncCentipede, swordAim, type Drop, type Foe, type Run } from './sim.ts'
+import { BLAST_RADIUS, EXTRACT_ZONE, FOE_SPOTS, NEST_DOOR, SOUL_CAST, SOUL_RADIUS, STAIRS, SWING_REACH, ZONE_H, ZONE_W, claimTarget, depthMods, foeView, isSpecial, lootTitle, nestGap, runCrates, stairsOpen, syncCentipede, swordAim, type Drop, type Foe, type Run } from './sim.ts'
 
 interface Puff {
   x: number
@@ -147,13 +147,17 @@ export function drawExtract(
   ctx.fillRect(0, 0, width, height)
   const cast = run.soul?.cast ?? 0
   const elapsed = cast > 0 ? SOUL_CAST - cast : 0
-  const shake = cast > 0 && elapsed >= 0.55 ? (1 - (elapsed - 0.55) / 0.35) * 5 : 0
+  const soulShake = cast > 0 && elapsed >= 0.55 ? (1 - (elapsed - 0.55) / 0.35) * 5 : 0
+  const shake = Math.max(soulShake, Math.min(7, (run.shake ?? 0) * 32))
   ctx.save()
   if (shake > 0) ctx.translate(Math.round(Math.sin(run.age * 47) * shake), Math.round(Math.cos(run.age * 53) * shake))
   drawBackdrop(ctx, scale, at, width, height, originX, originY, run.age, run.zone)
   drawFloor(ctx, run, scale, at)
   drawMineDressing(ctx, run, scale, at)
   drawDungeonDress(ctx, run, scale, at)
+  for (const boom of run.booms ?? []) {
+    drawBoomFrame(ctx, at(boom.x, boom.y).x, at(boom.x, boom.y).y, scale, boomFrame(boom.life))
+  }
   tickEffects(run)
   drawEffects(ctx, at, scale)
   const here = run.chart ? roomAt(run.chart, run.roomId) : null
@@ -204,7 +208,12 @@ export function drawExtract(
   const targetId = claimTarget(run)?.id
   for (const drop of run.drops) {
     const from = drop.fromX != null ? at(drop.fromX, drop.fromY ?? drop.y) : undefined
-    drawFloatingLoot(ctx, at(drop.x, drop.y), scale, drop, run.age, from, drop.id === targetId)
+    const spot = at(drop.x, drop.y)
+    const marked = drop.id === targetId
+    drawFloatingLoot(ctx, spot, scale, drop, run.age, from, marked)
+    if (marked || Math.hypot(run.x - drop.x, run.y - drop.y) < 56) {
+      drawTag(ctx, spot.x, spot.y - 16 * scale, lootTitle(drop))
+    }
   }
   for (const death of deaths) {
     const collapse = 1 - death.life / death.max
@@ -252,6 +261,10 @@ export function drawExtract(
   }
   ctx.globalAlpha = 1
   ctx.restore()
+  if ((run.booms ?? []).some((boom) => boomFrame(boom.life) === 0)) {
+    ctx.fillStyle = 'rgba(255, 248, 236, 0.28)'
+    ctx.fillRect(0, 0, width, height)
+  }
   drawSoulScreen(ctx, run, width, height, elapsed)
   let lift = 0
   ctx.textAlign = 'center'
@@ -1053,6 +1066,156 @@ export function drawChestStrip(ctx: CanvasRenderingContext2D, width: number, hei
   })
 }
 
+export const BOOM_FRAMES = 9
+export const BOOM_SECONDS = 0.5
+
+/** Frame 0 is the white flash. Frame 8 is the last smoke. */
+export function boomFrame(life: number, total = BOOM_SECONDS): number {
+  const t = 1 - Math.max(0, Math.min(1, life / total))
+  return Math.min(BOOM_FRAMES - 1, Math.floor(t * BOOM_FRAMES))
+}
+
+function drawTag(ctx: CanvasRenderingContext2D, x: number, y: number, name: string): void {
+  ctx.save()
+  ctx.font = '12px Courier New, monospace'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'bottom'
+  ctx.lineWidth = 3
+  ctx.strokeStyle = '#14110e'
+  ctx.strokeText(name, x, y)
+  ctx.fillStyle = '#f6ecd8'
+  ctx.fillText(name, x, y)
+  ctx.restore()
+}
+
+/** Lit barrel: accelerating red blink, a swell, a spark, and the 52px ring. */
+export function drawFuse(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number, left: number, max: number, age: number): void {
+  const s = Math.max(1, scale)
+  const k = 1 - Math.max(0, Math.min(1, left / Math.max(0.05, max)))
+  const freq = 3 + k * 14
+  const on = Math.sin(age * freq * Math.PI * 2) > 0
+  const swell = 1 + k * 0.35 + Math.sin(age * 22) * 0.08
+  const px = (dx: number, dy: number, w: number, h: number, color: string) => {
+    ctx.fillStyle = color
+    ctx.fillRect(Math.round(x + dx * s), Math.round(y + dy * s), Math.max(1, Math.round(w * s)), Math.max(1, Math.round(h * s)))
+  }
+  const jitter = Math.sin(age * (18 + k * 30)) * (0.6 + k * 1.4)
+  ctx.save()
+  ctx.globalAlpha = 0.28 + 0.5 * (0.5 + 0.5 * Math.sin(age * (5 + k * 12)))
+  for (let i = 0; i < 36; i += 1) {
+    const a = (i / 36) * Math.PI * 2
+    px(Math.cos(a) * BLAST_RADIUS - 0.5, Math.sin(a) * BLAST_RADIUS - 0.5, 1.5, 1.5, i % 2 === 0 ? '#e10600' : '#ffb020')
+  }
+  ctx.restore()
+  const body = 7 * swell
+  px(-body + jitter, -body, body * 2, 2, '#1a120e')
+  px(-body + jitter, body - 2, body * 2, 2, '#1a120e')
+  px(-body + jitter, -body, 2, body * 2, '#1a120e')
+  px(body - 2 + jitter, -body, 2, body * 2, '#1a120e')
+  if (on) {
+    px(-5 + jitter, -6, 10, 12, '#e10600')
+    px(-3 + jitter, -4, 6, 8, '#ff4a3a')
+    px(-1 + jitter, -2, 2, 4, '#fff6d0')
+  }
+  const spark = -11 - (Math.floor(age * 16) % 3)
+  px(-1 + jitter, spark, 2, 2, '#fff6d0')
+  px(0 + jitter, spark - 2, 1, 2, on ? '#fffaf2' : '#ffb020')
+  px(1 + jitter, spark + 1, 1, 1, '#e25a12')
+}
+
+function drawScorch(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number): void {
+  const s = Math.max(1, scale)
+  const blot = (dx: number, dy: number, w: number, h: number, color: string) => {
+    ctx.fillStyle = color
+    ctx.fillRect(Math.round(x + dx * s), Math.round(y + dy * s), Math.max(1, Math.round(w * s)), Math.max(1, Math.round(h * s)))
+  }
+  blot(-10, -4, 20, 8, '#24160f')
+  blot(-6, -7, 12, 5, '#3a2418')
+  blot(-14, 1, 8, 4, '#1a120e')
+  blot(6, 2, 9, 4, '#2a1812')
+  blot(-3, 5, 7, 3, '#4a3020')
+}
+
+/** One frame of the barrel blast. Coordinates are already in pixels. The ring is the 52px damage radius. */
+export function drawBoomFrame(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number, frame: number): void {
+  const s = Math.max(1, scale)
+  const n = Math.max(0, Math.min(BOOM_FRAMES - 1, frame))
+  const px = (dx: number, dy: number, w: number, h: number, color: string) => {
+    ctx.fillStyle = color
+    ctx.fillRect(Math.round(x + dx * s), Math.round(y + dy * s), Math.max(1, Math.round(w * s)), Math.max(1, Math.round(h * s)))
+  }
+  drawScorch(ctx, x, y, scale)
+  const ringAlpha = n < 2 ? 0.35 : n < 7 ? 0.9 : 0.4
+  ctx.save()
+  ctx.globalAlpha = ringAlpha
+  for (let i = 0; i < 40; i += 1) {
+    const a = (i / 40) * Math.PI * 2
+    const r = BLAST_RADIUS
+    px(Math.cos(a) * r - 0.6, Math.sin(a) * r - 0.6, 1.6, 1.6, i % 2 === 0 ? '#ffb020' : '#1a120e')
+  }
+  ctx.restore()
+  const rad = [8, 16, 26, 36, 46, 52, 44, 30, 16][n] ?? 16
+  const shell = n === 0 ? '#fffaf2' : n < 3 ? '#ffe7a8' : n < 6 ? '#ffb020' : '#e25a12'
+  const core = n < 2 ? '#fffaf2' : n < 5 ? '#ffe14a' : '#ffb020'
+  disk(ctx, x, y, (rad + 3) * s, '#1a120e')
+  disk(ctx, x, y, rad * s, shell)
+  disk(ctx, x, y, Math.max(3, rad * 0.45) * s, core)
+  if (n < 2) disk(ctx, x, y, 7 * s, '#fffaf2')
+  const smokes = [
+    [-18, -8], [14, -12], [-6, -16], [22, -4], [-24, 2],
+  ]
+  ctx.save()
+  ctx.globalAlpha = n < 3 ? 0.35 : 0.75
+  smokes.forEach(([sx, sy], i) => {
+    const rise = n * (3 + (i % 3))
+    const color = i % 2 === 0 ? '#6e645c' : '#3a342e'
+    px(sx - 2, sy - rise, 6, 4, color)
+    px(sx, sy - rise - 3, 3, 3, '#8a8078')
+  })
+  ctx.restore()
+  const staves = [
+    [1, -0.2, 8, 2],
+    [-0.7, 0.8, 2, 7],
+    [0.4, 1, 7, 2],
+    [-1, -0.4, 2, 6],
+  ] as const
+  staves.forEach(([dx, dy, w, h], i) => {
+    const fly = 6 + n * (4 + i)
+    px(dx * fly, dy * fly - n, w, h, i % 2 === 0 ? '#8a5a32' : '#5c3a22')
+    px(dx * fly + (w > h ? w - 1 : 0), dy * fly - n, 1, 1, '#c4a15a')
+  })
+  for (let i = 0; i < 8; i += 1) {
+    const a = (i / 8) * Math.PI * 2 + n * 0.2
+    const dist = 8 + n * 5
+    px(Math.cos(a) * dist, Math.sin(a) * dist, 1, 1, i % 2 === 0 ? '#fff6d0' : '#ffb020')
+  }
+}
+
+function disk(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, color: string): void {
+  ctx.fillStyle = color
+  const r = Math.max(1, radius)
+  const step = Math.max(1, Math.round(r / 12))
+  for (let dy = -r; dy <= r; dy += step) {
+    const span = Math.sqrt(Math.max(0, r * r - dy * dy))
+    ctx.fillRect(Math.round(x - span), Math.round(y + dy), Math.max(1, Math.round(span * 2)), step)
+  }
+}
+
+/** Nine frames of the blast, left to right. */
+export function drawBoomStrip(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+  ctx.imageSmoothingEnabled = false
+  ctx.fillStyle = '#1a140f'
+  ctx.fillRect(0, 0, width, height)
+  const cell = width / BOOM_FRAMES
+  for (let frame = 0; frame < BOOM_FRAMES; frame += 1) {
+    const cx = cell * (frame + 0.5)
+    const cy = height * 0.58
+    ctx.fillStyle = '#241c16'
+    ctx.fillRect(cx - cell * 0.46, 8, cell * 0.92, height - 16)
+    drawBoomFrame(ctx, cx, cy, 1.15, frame)
+  }
+}
+
 function drawDungeonDress(
   ctx: CanvasRenderingContext2D,
   run: Run,
@@ -1094,9 +1257,16 @@ function drawDungeonDress(
     }
   }
   for (const prop of run.chart?.props ?? []) {
-    if (prop.room !== run.roomId || prop.state === 'spent') continue
+    if (prop.room !== run.roomId) continue
+    if (prop.kind === 'barrel' && prop.state === 'spent') {
+      drawScorch(ctx, at(prop.x, prop.y).x, at(prop.x, prop.y).y, scale)
+      continue
+    }
+    if (prop.state === 'spent') continue
     const id = spriteIdFor(prop.kind, undefined, false, prop.state === 'open')
+    const spot = at(prop.x, prop.y)
     placeMarked(ctx, at, scale, run, prop.x, prop.y, id, interactable(id))
+    if (prop.kind === 'barrel' && (prop.fuse ?? 0) > 0) drawFuse(ctx, spot.x, spot.y, scale, prop.fuse ?? 0, prop.fuseMax ?? prop.fuse ?? 1, run.age)
     if (prop.kind === 'chest' && prop.lock === 'key' && prop.state !== 'open') {
       blitMotif(ctx, 'key', at(prop.x + 8, prop.y).x, at(prop.x, prop.y - 10).y, Math.max(1, scale * 0.8))
     }
@@ -1114,17 +1284,6 @@ function drawDungeonDress(
     ctx.globalAlpha = Math.max(0, bit.life / 0.35)
     ctx.fillStyle = '#c4b8a4'
     ctx.fillRect(Math.round(p.x), Math.round(p.y), Math.max(1, scale), Math.max(1, scale))
-  }
-  ctx.globalAlpha = 1
-  for (const boom of run.booms ?? []) {
-    const p = at(boom.x, boom.y)
-    const grow = (1 - boom.life / 0.45) * 18 * scale
-    ctx.globalAlpha = Math.max(0, boom.life / 0.45)
-    ctx.strokeStyle = '#e25a2a'
-    ctx.lineWidth = Math.max(2, scale)
-    ctx.strokeRect(Math.round(p.x - 8 * scale - grow), Math.round(p.y - 8 * scale - grow), Math.round(16 * scale + grow * 2), Math.round(16 * scale + grow * 2))
-    ctx.fillStyle = '#ffb020'
-    ctx.fillRect(Math.round(p.x - 3 * scale), Math.round(p.y - 3 * scale), Math.round(6 * scale), Math.round(6 * scale))
   }
   ctx.globalAlpha = 1
 }
