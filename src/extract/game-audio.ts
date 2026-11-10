@@ -40,6 +40,7 @@ function clamp01(n: number): number {
 const GAP: Record<string, number> = {
   'player.step': 320,
   'player.swing': 90,
+  'swing.reject': 40,
   'player.hit': 40,
   'player.glance': 80,
   'foe.hurt': 45,
@@ -268,7 +269,11 @@ function context(host: AudioHost | null): AudioContext | null {
   if (!Ctor) return null
   if (ctx) return ctx
   try {
-    ctx = new Ctor()
+    try {
+      ctx = new Ctor({ latencyHint: 'interactive' })
+    } catch {
+      ctx = new Ctor()
+    }
     const master = ctx.createGain()
     master.gain.value = 0.8
     const comp = ctx.createDynamicsCompressor()
@@ -315,9 +320,14 @@ export function playCue(id: SoundCue, pref: AudioPref, now = typeof performance 
   }
   const gain = audio.createGain()
   const peak = tone.gain * pref.sfx
-  gain.gain.setValueAtTime(0.0001, when)
-  gain.gain.linearRampToValueAtTime(Math.max(0.0002, peak), when + (step ? 0.03 : 0.008))
-  gain.gain.exponentialRampToValueAtTime(0.0001, when + tone.dur)
+  if (id === 'player.swing') {
+    gain.gain.setValueAtTime(Math.max(0.0002, peak), when)
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + tone.dur)
+  } else {
+    gain.gain.setValueAtTime(0.0001, when)
+    gain.gain.linearRampToValueAtTime(Math.max(0.0002, peak), when + (step ? 0.03 : 0.008))
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + tone.dur)
+  }
   gain.connect(sfxGain)
   voices.push({ gain, at: now })
   const osc = audio.createOscillator()
@@ -343,6 +353,26 @@ export function playCue(id: SoundCue, pref: AudioPref, now = typeof performance 
     src.start(when)
     src.stop(when + tone.dur)
   }
+  return true
+}
+
+/** Quiet tick for a swing the cooldown refused. Dropped, never queued. */
+export function playRejectClick(pref: AudioPref, now = typeof performance === 'undefined' ? Date.now() : performance.now(), host: AudioHost | null = typeof window === 'undefined' ? null : window): boolean {
+  if (pref.muted || pref.sfx <= 0) return false
+  if (!allowSound('swing.reject', now, last)) return false
+  const audio = context(host)
+  if (!audio || !sfxGain) return false
+  const when = audio.currentTime
+  const osc = audio.createOscillator()
+  const gain = audio.createGain()
+  osc.type = 'sine'
+  osc.frequency.value = 740
+  gain.gain.setValueAtTime(0.02 * pref.sfx, when)
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.02)
+  osc.connect(gain)
+  gain.connect(sfxGain)
+  osc.start(when)
+  osc.stop(when + 0.025)
   return true
 }
 
@@ -451,6 +481,8 @@ export function resetMix(): void {
   finaleArmed = false
   duckUntil = 0
   crackleAt = -Infinity
+  last.clear()
+  voices.length = 0
 }
 
 /** One note per gap, even if the timer dumps a backlog. */

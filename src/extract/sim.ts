@@ -1394,6 +1394,25 @@ function hurtPlayer(run: Run, amount: number, fromX: number, fromY: number): voi
   float(run, t('hit.hurt'))
 }
 
+/** Start a swing on this call. Same cooldown and stamina as before. */
+export function trySwing(run: Run): boolean {
+  const casting = (run.soul?.cast ?? 0) > 0
+  const armed = run.sword || run.spear != null
+  if (!(run.attackCd <= 0 && armed && run.stam >= 10 && run.swing <= 0 && !casting)) return false
+  run.stam -= run.spear ? 8 : 10
+  run.attackCd = run.spear ? 0.4 : 0.5
+  run.swing = run.spear ? SPEAR_TOTAL : SWING_TOTAL
+  run.swingHit = []
+  if (run.spear?.perks.includes('lunge')) {
+    run.x += Math.cos(run.facing) * 18
+    run.y += Math.sin(run.facing) * 18
+    run.x = Math.max(-ZONE_W / 2 + PLAYER_R, Math.min(ZONE_W / 2 - PLAYER_R, run.x))
+    run.y = Math.max(-ZONE_H / 2 + PLAYER_R, Math.min(ZONE_H / 2 - PLAYER_R, run.y))
+    crossZone(run)
+  }
+  return true
+}
+
 export type StepResult = 'play' | 'dead' | 'extracted'
 
 export function step(run: Run, input: Input, dt: number): StepResult {
@@ -1447,20 +1466,7 @@ export function step(run: Run, input: Input, dt: number): StepResult {
     run.dodgeCd = 0.7
     if (len > 0.15) run.facing = Math.atan2(input.moveY, input.moveX)
   }
-  const armed = run.sword || run.spear != null
-  if (input.attack && run.attackCd <= 0 && armed && run.stam >= 10 && run.swing <= 0 && !casting) {
-    run.stam -= run.spear ? 8 : 10
-    run.attackCd = run.spear ? 0.4 : 0.5
-    run.swing = run.spear ? SPEAR_TOTAL : SWING_TOTAL
-    run.swingHit = []
-    if (run.spear?.perks.includes('lunge')) {
-      run.x += Math.cos(run.facing) * 18
-      run.y += Math.sin(run.facing) * 18
-      run.x = Math.max(-ZONE_W / 2 + PLAYER_R, Math.min(ZONE_W / 2 - PLAYER_R, run.x))
-      run.y = Math.max(-ZONE_H / 2 + PLAYER_R, Math.min(ZONE_H / 2 - PLAYER_R, run.y))
-      crossZone(run)
-    }
-  }
+  if (input.attack) trySwing(run)
   if (run.swing > 0) {
     const total = run.spear ? SPEAR_TOTAL : SWING_TOTAL
     const from = total - run.swing

@@ -4,8 +4,9 @@ import { drawBlockStrip, drawCarryStrip, drawContactSheet, drawDirectionStrip, d
 import { paintTitleScreen, titleUsesDesktopPrompt } from './title.ts'
 import { clampCenter, followBase, stickVector } from './float-stick.ts'
 import { AUDIO_KEY, playBoom, playFuseTick, playSoulBurst, playSoulCharge, resumeAudio, soulBeat } from './soul-audio.ts'
-import { bedFor, cuesFromDelta, deltaFromSnaps, playBed, playBossFinale, playCue, playTorchCrackle, readAudioPref as readMix, unlockAudio, writeAudioPref, type Ear } from './game-audio.ts'
-import { armAttack, attackLive, blockSecondTap, disarmAttack, holdReleased, type AttackBuffer } from './input-lock.ts'
+import { bedFor, cuesFromDelta, deltaFromSnaps, playBed, playBossFinale, playCue, playRejectClick, playTorchCrackle, readAudioPref as readMix, unlockAudio, writeAudioPref, type Ear } from './game-audio.ts'
+import { blockSecondTap, holdReleased } from './input-lock.ts'
+import { onSwordPress } from './sword-press.ts'
 import { bossTitle, drawChestStrip, drawExtract, drawGallery, drawLootStrip, drawRevealStrip, setEffectBudget } from './view.ts'
 import { backingRatio } from './camera.ts'
 import { drawMapSheet } from './map-sprites.ts'
@@ -47,6 +48,7 @@ import {
   equipBlade,
   equipSpear,
   unequipBlade,
+  trySwing,
   foeView,
   runCrates,
   inExtract,
@@ -147,6 +149,7 @@ function requestStageFullscreen(): void {
 window.addEventListener('pointerdown', () => { unlockAudio(); resumeAudio(); requestStageFullscreen() }, { once: true })
 window.addEventListener('pointerdown', (event) => {
   const el = event.target instanceof Element ? event.target : null
+  if (el?.closest('#attack')) return
   if (el?.closest('button')) playCue(el.closest('[data-set-lang]') ? 'ui.lang' : 'ui.tap', mixPref())
 }, true)
 document.addEventListener('visibilitychange', () => {
@@ -205,8 +208,21 @@ document.querySelector<HTMLButtonElement>('#again')!.addEventListener('click', (
   show('base')
 })
 
-let attackBuffer: AttackBuffer | null = null
 let useFlip = false
+function pressAttack(): void {
+  const run = save.run
+  if (!run || outcome || titleOpen || !fieldVisible()) return
+  unlockAudio()
+  onSwordPress({
+    begin: () => trySwing(run),
+    whoosh: () => {
+      playCue('player.swing', mixPref())
+      if (lastEar) lastEar = { ...lastEar, swing: run.swing }
+    },
+    reject: () => { playRejectClick(mixPref()) },
+    show: () => { paint() },
+  })
+}
 function bindTap(id: string, onTap: (event: PointerEvent) => void): void {
   const button = document.querySelector<HTMLButtonElement>(id)
   if (!button) return
@@ -216,7 +232,7 @@ function bindTap(id: string, onTap: (event: PointerEvent) => void): void {
     onTap(event)
   })
 }
-bindTap('#attack', () => { attackBuffer = armAttack(performance.now()) })
+bindTap('#attack', () => { pressAttack() })
 bindTap('#dodge', () => { tap.dodge = true })
 bindTap('#open', () => { tap.interact = true })
 bindTap('#claim', (event) => { event.stopPropagation(); tap.claim = true })
@@ -1065,7 +1081,7 @@ window.addEventListener('keydown', (event) => {
     if (!settings.hidden) { closeSettings(); return }
   }
   keys.add(event.key.toLowerCase())
-  if (event.key.toLowerCase() === 'j') tap.attack = true
+  if (event.key.toLowerCase() === 'j') pressAttack()
   if (event.key.toLowerCase() === 'f') { blocking = true; blockBtn?.setAttribute('aria-pressed', 'true') }
   if (event.key.toLowerCase() === 'k') tap.dodge = true
   if (event.key.toLowerCase() === 'e') tap.interact = true
@@ -1152,7 +1168,6 @@ function frame(now: number): void {
     if (save.run && !outcome && hudOpen && fieldVisible()) {
       paint()
     } else if (save.run && !outcome && fieldVisible()) {
-      const now = performance.now()
       const input = readInput()
       if (input.interact && save.run) {
         const purse = save.coins
@@ -1160,7 +1175,6 @@ function frame(now: number): void {
         if (note) save.run.floats.push({ text: note, life: 1.6 })
         else if (save.coins < purse) playCue('world.buy', mixPref())
       }
-      const cdBefore = save.run.attackCd
       const next = dt > 0 ? step(save.run, input, dt) : 'play'
       const ping = save.run?.boomPing ?? 0
       if (ping !== boomHeard) {
@@ -1172,7 +1186,6 @@ function frame(now: number): void {
         fuseHeard = ticks
         playFuseTick(audioPref())
       }
-      attackBuffer = disarmAttack(attackBuffer, (save.run?.attackCd ?? 0) > cdBefore, now)
       if (soulNear(save.run) && (tap.claim || tap.interact)) claimSoul(save.run)
       else if (tap.claim && !bagFull(save.run)) {
         const target = claimTarget(save.run)
@@ -1412,7 +1425,7 @@ function readInput(): Input {
   if (keys.has('a') || keys.has('arrowleft')) x -= 1
   if (keys.has('d') || keys.has('arrowright')) x += 1
   const shrine = save.run != null && soulNear(save.run)
-  return { moveX: x, moveY: y, attack: tap.attack || attackLive(attackBuffer, performance.now()), dodge: tap.dodge, interact: tap.interact && !shrine, block: blocking, use: tap.use, soul: tap.soul }
+  return { moveX: x, moveY: y, attack: tap.attack, dodge: tap.dodge, interact: tap.interact && !shrine, block: blocking, use: tap.use, soul: tap.soul }
 }
 
 function putText(selector: string, value: string): void {
