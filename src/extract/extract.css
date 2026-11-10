@@ -184,7 +184,7 @@ button { cursor: pointer; }
   position: fixed;
   z-index: 40;
   left: 50%;
-  bottom: calc(78px + var(--safe-b));
+  top: calc(10px + var(--safe-t));
   transform: translateX(-50%);
   margin: 0;
   padding: 6px 10px;

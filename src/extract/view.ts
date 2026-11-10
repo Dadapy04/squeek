@@ -297,7 +297,7 @@ export function drawExtract(
       const spot = at(foe.x, foe.y)
       return { x: spot.x, y: spot.y - 16 * scale, r: 18 * scale }
     })
-    const box = placeNameTag({ headTop: hero.y - 38 * scale, centerX: hero.x }, size, foes, { w: width, h: height })
+    const box = placeNameTag({ headTop: hero.y - 56 * scale, centerX: hero.x }, size, foes, { w: width, h: height })
     drawNameTag(ctx, box, label)
   }
   ctx.globalAlpha = 1
