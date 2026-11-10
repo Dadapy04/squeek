@@ -168,6 +168,10 @@ function dismissTitle(): void {
   titleOpen = false
   titleEl.hidden = true
   document.body.classList.remove('title')
+  if (save.run) {
+    show('field')
+    return
+  }
   renderBase()
   show('base')
   requestStageFullscreen()
@@ -1367,6 +1371,7 @@ mountOnline({
   getSave: () => save,
   setSave: (next) => {
     if (save.run && !next.run && !takeRunEndPermit()) return
+    if (next.spear || next.blade) picks = picks.filter((stack) => stack.kind !== 'sword')
     save = next
     writeExtract(storage, save)
     outcome = null
@@ -1882,14 +1887,40 @@ function paintBladeRack(): void {
     const button = document.createElement('button')
     button.type = 'button'
     button.textContent = t('stash.equipBlade', { name: bladeDisplay(blade.id, blade.name), dmg: blade.damage })
-    button.addEventListener('click', () => {
-      picks = picks.filter((stack) => stack.kind !== 'sword')
-      equipBlade(save, blade.id)
-      writeExtract(storage, save)
-      renderBase()
-    })
+    pressButton(button, () => { void wearWeapon('blade', blade.id) })
     rack.append(button)
   }
+}
+
+function pressButton(button: HTMLButtonElement, fn: () => void): void {
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    fn()
+  })
+}
+
+async function wearWeapon(which: 'sword' | 'spear' | 'blade', id?: string): Promise<void> {
+  if (save.run) return
+  if (which !== 'sword') picks = picks.filter((stack) => stack.kind !== 'sword')
+  if (walletLive()) {
+    const result = await walletAct('/v1/act/equip', { which, id })
+    if (!result.ok) {
+      const note = document.querySelector('.inv-detail')
+      if (note) note.append(noteLine(result.reason ?? t('online.offline')))
+    }
+    return
+  }
+  if (which === 'spear' && id) equipSpear(save, id)
+  else if (which === 'blade' && id) equipBlade(save, id)
+  else {
+    unequipSpear(save)
+    unequipBlade(save)
+    if (count(picks, 'sword') === 0 && count(save.stash, 'sword') > 0) takePick('sword')
+  }
+  writeExtract(storage, save)
+  stashFocus = which === 'spear' && save.spear ? { kind: 'tombak', spearId: save.spear.id } : { kind: 'sword' }
+  renderBase()
 }
 
 function renderBase(): void {
@@ -1915,29 +1946,35 @@ function renderBase(): void {
   panel.append(invHead(t('stash.value', { n: total }), t('stash.count', { n: held.used, max: STASH_SLOTS })))
   const gear = document.createElement('div')
   gear.className = 'inv-gear'
-  const swordLeft = count(save.stash, 'sword') - count(picks, 'sword')
-  const sword = gearSlot('sword', swordLeft > 0 ? t('item.sword') : t('stash.swordGone'), undefined, 0, true)
-  sword.disabled = swordLeft <= 0
-  sword.addEventListener('click', () => { stashFocus = { kind: 'sword' }; renderBase() })
+  const weapon = save.spear
+    ? gearSlot('tombak', t('spear.named', { rarity: RARITY_NAME[save.spear.rarity] }), save.spear.rarity, save.spear.coins ?? 0, true)
+    : save.blade
+      ? gearSlot('bilah', bladeDisplay(save.blade.id, save.blade.name), save.blade.rarity, save.blade.coins, true)
+      : gearSlot('sword', count(save.stash, 'sword') - count(picks, 'sword') > 0 || count(picks, 'sword') > 0 ? t('item.sword') : t('stash.swordGone'), undefined, 0, true)
+  weapon.dataset.equipped = '1'
+  pressButton(weapon, () => {
+    stashFocus = save.spear
+      ? { kind: 'tombak', spearId: save.spear.id }
+      : save.blade
+        ? { kind: 'sword' }
+        : { kind: 'sword' }
+    renderBase()
+  })
   const shield = gearSlot('shield', save.shield == null || bringShield ? t('stash.noShield') : t('stash.shield', { n: save.shield, max: shieldMaxFor(save.shieldLevel) }), undefined, 0, true)
   shield.disabled = save.shield == null || bringShield
   shield.addEventListener('click', () => { bringShield = true; renderBase() })
   const cover = insuranceButton(save.insured, () => { stashFocus = save.insured ? { kind: save.insured.kind, coins: save.insured.unit?.coins, spearId: save.insured.spear?.id, box: true } : null; renderBase() })
   if (stashFocus?.box) cover.classList.add('on')
-  gear.append(sword, shield, cover)
-  if (save.spear) {
-    const worn = gearSlot('tombak', t('spear.named', { rarity: RARITY_NAME[save.spear.rarity] }), save.spear.rarity, save.spear.coins ?? 0, true)
-    worn.addEventListener('click', () => { unequipSpear(save); writeExtract(storage, save); renderBase() })
-    gear.append(worn)
-  }
+  gear.append(weapon, shield, cover)
   const grid = document.createElement('div')
   grid.className = 'inv-grid'
   for (const group of held.groups) {
     const button = itemSlot(group.kind, group.name, group.rarity, group.coins, group.qty)
     if (stashFocus && stashFocus.kind === group.kind && stashFocus.spearId === group.spearId && stashFocus.coins === group.coins) button.classList.add('on')
-    button.addEventListener('click', () => {
+    pressButton(button, () => {
       stashFocus = { kind: group.kind, coins: group.coins, spearId: group.spearId }
       renderBase()
+      document.querySelector('.inv-detail')?.scrollIntoView({ block: 'nearest' })
     })
     grid.append(button)
   }
@@ -1956,7 +1993,7 @@ function renderBase(): void {
   stashEl.append(panel)
   if (bringShield && save.shield != null) trayEl.append(chip(t('loadout.shield', { n: save.shield }), () => { bringShield = false }, 'shield'))
   if (save.spear) {
-    const worn = chip(t('bag.equipped', { name: spearLabel(save.spear) }), () => { unequipSpear(save) }, 'tombak')
+    const worn = chip(t('bag.equipped', { name: spearLabel(save.spear) }), () => { stashFocus = { kind: 'tombak', spearId: save.spear?.id }; renderBase() }, 'tombak')
     worn.dataset.rarity = save.spear.rarity
     trayEl.append(worn)
   }
@@ -1983,6 +2020,9 @@ function stashGroups(): { groups: InvGroup[]; used: number } {
   for (const spear of save.spears) {
     used += 1
     groups.push({ kind: 'tombak', name: t('spear.named', { rarity: RARITY_NAME[spear.rarity] }), rarity: spear.rarity, coins: spear.coins ?? 0, qty: 1, spearId: spear.id, origin: spear.origin })
+  }
+  if ((save.spear || save.blade) && count(save.stash, 'sword') - count(picks, 'sword') > 0) {
+    groups.unshift({ kind: 'sword', name: ITEM_NAME.sword, coins: 0, qty: count(save.stash, 'sword') - count(picks, 'sword') })
   }
   groups.sort((a, b) => b.coins - a.coins || a.name.localeCompare(b.name))
   return { groups, used }
@@ -2025,13 +2065,7 @@ function stashDetail(): HTMLElement {
     button.type = 'button'
     button.className = 'primary'
     button.textContent = t('stash.equip')
-    button.addEventListener('click', () => {
-      picks = picks.filter((stack) => stack.kind !== 'sword')
-      equipSpear(save, spear.id)
-      writeExtract(storage, save)
-      stashFocus = null
-      renderBase()
-    })
+    pressButton(button, () => { void wearWeapon('spear', spear.id) })
     box.append(button, sellButtons(box, 'tombak', spear.coins, spear.id, spear.rarity), insureStashButton('tombak', spear.coins, spear.id))
     return box
   }
@@ -2041,12 +2075,20 @@ function stashDetail(): HTMLElement {
   const priced = unit && focus.kind !== 'sword'
   const price = priced && unit ? `<p style="color:${color}">${RARITY_NAME[unit.rarity]} · ${unit.coins} ${t('coin.word')}</p>` : ''
   box.innerHTML = `<b>${name}</b>${price}<p>${bagUse(focus.kind)}</p>`
-  if (focus.kind !== 'sword' || count(save.stash, 'sword') - count(picks, 'sword') > 0) {
+  if (focus.kind === 'sword') {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'primary'
+    button.textContent = save.spear || save.blade ? t('stash.equip') : (count(picks, 'sword') > 0 ? t('stash.worn') : t('stash.equip'))
+    if (!(save.spear || save.blade) && count(picks, 'sword') > 0) button.disabled = true
+    pressButton(button, () => { void wearWeapon('sword') })
+    box.append(button)
+  } else if (count(save.stash, focus.kind) - count(picks, focus.kind) > 0) {
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'primary'
     button.textContent = t('stash.take')
-    button.addEventListener('click', () => { takePick(focus.kind); renderBase() })
+    pressButton(button, () => { takePick(focus.kind); renderBase() })
     box.append(button)
   }
   if (focus.kind !== 'sword' && unit) box.append(sellButtons(box, focus.kind, unit.coins, undefined, unit.rarity), insureStashButton(focus.kind, unit.coins))
@@ -2176,7 +2218,7 @@ function chip(label: string, onClick: () => void, kind?: string): HTMLButtonElem
   button.className = 'chip'
   if (kind) button.dataset.kind = kind
   button.textContent = label
-  button.addEventListener('click', () => {
+  pressButton(button, () => {
     onClick()
     renderBase()
   })

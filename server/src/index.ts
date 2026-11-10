@@ -1,5 +1,5 @@
 import { ALTERS, RETIRE_BLOBS, SCHEMA } from './schema.ts'
-import { applyDeath, applyExtract, buyMerchant, fieldBuy, freshAccount, mendShield, replayTutorialAccount, seeTip, sellCommon, sellUnit, settleOneWeapon, skipTutorial, startRun, undoRun, upgradeBag, upgradeWeapon, type Account, type LootRow, type Pick } from '../../shared/account.ts'
+import { applyDeath, applyExtract, buyMerchant, chooseWeapon, fieldBuy, freshAccount, mendShield, replayTutorialAccount, seeTip, sellCommon, sellUnit, settleOneWeapon, skipTutorial, startRun, undoRun, upgradeBag, upgradeWeapon, type Account, type LootRow, type Pick } from '../../shared/account.ts'
 import { checksumAddress, isAddress, normAddress, randomNonce, readMessageAddress, readNonce, recoverAddress, siweMessage, uriAllowed } from './siwe.ts'
 import { judgeRun, MIN_SECONDS, weekKey, type RunEvent } from './rules.ts'
 
@@ -358,6 +358,7 @@ function runAction(account: Account, action: string, body: Record<string, unknow
   if (action === 'upgrade') return upgradeWeapon(account, String(body.which ?? ''))
   if (action === 'bag') return upgradeBag(account)
   if (action === 'workshop') return mendShield(account, String(body.mode ?? ''))
+  if (action === 'equip') return chooseWeapon(account, String(body.which ?? ''), typeof body.id === 'string' ? body.id : undefined)
   if (action === 'tutorial') {
     skipTutorial(account)
     return { ok: true }

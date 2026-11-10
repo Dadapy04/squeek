@@ -870,6 +870,9 @@ button.danger { background: #6e2420; color: #fff6f2; border-color: #a14a42; }
 .loot b, .loot span { overflow: hidden; text-overflow: ellipsis; }
 @media (orientation: landscape) and (max-height: 520px) {
   #loadout { display: block; }
+  .inv-main { display: flex; flex-direction: column; }
+  .inv-detail { order: -1; }
+  .inv-detail .primary { min-height: 40px; font-size: 14px; }
   #bagDetail .row button, .inv-detail button { min-height: 32px; padding: 3px 8px; font-size: 12px; }
   .stash-total { margin: 4px 0; padding: 4px 8px; font-size: 14px; }
   .inv-grid { grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 4px; }

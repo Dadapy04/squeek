@@ -227,6 +227,48 @@ export function buyMerchant(account: Account, kind: string): Ok<{ coins: number 
   return { ok: true, coins: account.coins }
 }
 
+/** One weapon at base. The sword stays in the stash until Head out. */
+export function chooseWeapon(account: Account, which: string, id?: string): Ok<{ weapon: string }> | Fail {
+  if (account.activeRun) return { ok: false, reason: 'run-live' }
+  if (which === 'sword') {
+    if (count(account.stash, 'sword') < 1 && !account.blade) return { ok: false, reason: 'missing' }
+    if (account.spear) {
+      account.spears.push({ ...account.spear, origin: 'stash' })
+      account.spear = null
+    }
+    if (account.blade) {
+      account.blades.push({ ...account.blade, origin: 'stash' })
+      account.blade = null
+    }
+    return { ok: true, weapon: 'sword' }
+  }
+  if (which === 'spear') {
+    const spear = account.spears.find((item) => item.id === id)
+    if (!spear) return { ok: false, reason: 'missing' }
+    if (account.spear && account.spear.id !== spear.id) account.spears.push({ ...account.spear, origin: 'stash' })
+    if (account.blade) {
+      account.blades.push({ ...account.blade, origin: 'stash' })
+      account.blade = null
+    }
+    account.spear = { ...spear, origin: 'stash' }
+    account.spears = account.spears.filter((item) => item.id !== spear.id)
+    return { ok: true, weapon: 'spear' }
+  }
+  if (which === 'blade') {
+    const blade = account.blades.find((item) => item.id === id)
+    if (!blade) return { ok: false, reason: 'missing' }
+    if (account.blade && account.blade.id !== blade.id) account.blades.push({ ...account.blade, origin: 'stash' })
+    if (account.spear) {
+      account.spears.push({ ...account.spear, origin: 'stash' })
+      account.spear = null
+    }
+    account.blade = { ...blade, origin: 'stash' }
+    account.blades = account.blades.filter((item) => item.id !== blade.id)
+    return { ok: true, weapon: 'blade' }
+  }
+  return { ok: false, reason: 'kind' }
+}
+
 export function fieldBuy(account: Account, kind: string): Ok<{ coins: number }> | Fail {
   const run = account.activeRun
   if (!run) return { ok: false, reason: 'no-run' }
