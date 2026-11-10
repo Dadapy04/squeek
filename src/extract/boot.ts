@@ -308,7 +308,7 @@ function storeMix(music: number, sfx: number): void {
 musicVol?.addEventListener('input', () => storeMix(Number(musicVol.value) / 100, Number(sfxVol?.value ?? 70) / 100))
 sfxVol?.addEventListener('input', () => storeMix(Number(musicVol?.value ?? 45) / 100, Number(sfxVol.value) / 100))
 document.querySelector('#muteMix')?.addEventListener('click', () => {
-  storage?.setItem(AUDIO_KEY, mixPref().muted ? writeAudioPref({ muted: false, volume: 0.7, music: 0.45, sfx: 0.7 }) : 'mute')
+  storage?.setItem(AUDIO_KEY, mixPref().muted ? writeAudioPref({ muted: false, volume: 0.7, music: 0.35, sfx: 0.7 }) : 'mute')
   paintMix()
 })
 paintMix()

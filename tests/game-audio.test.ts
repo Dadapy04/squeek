@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SOUND_CUES, allowSound, bedFor, cuesFromDelta, deltaFromSnaps, readAudioPref, writeAudioPref, type CueDelta, type Ear } from '../src/extract/game-audio.ts'
+import { SOUND_CUES, allowSound, bedFor, cuesFromDelta, deltaFromSnaps, mixLedger, playBed, readAudioPref, resetMix, writeAudioPref, type CueDelta, type Ear } from '../src/extract/game-audio.ts'
 
 const blank: Ear = {
   hp: 125, stepping: false, swing: 0, dodge: 0, blocking: false, shield: 4, bag: 0, drops: 0,
@@ -10,7 +10,7 @@ const blank: Ear = {
 
 describe('audio prefs', () => {
   it('keeps the old mute and volume strings and round-trips the split sliders', () => {
-    expect(readAudioPref(null)).toMatchObject({ muted: false, music: 0.45, sfx: 0.7 })
+    expect(readAudioPref(null)).toMatchObject({ muted: false, music: 0.35, sfx: 0.7 })
     expect(readAudioPref('mute').muted).toBe(true)
     expect(readAudioPref('v:0.80')).toMatchObject({ music: 0.8, sfx: 0.8, volume: 0.8 })
     const stored = writeAudioPref({ muted: false, volume: 0.4, music: 0.3, sfx: 0.4 })
@@ -53,6 +53,68 @@ describe('sound hooks', () => {
     expect(bedFor({ title: true })).toBe('title')
     expect(bedFor({})).toBe('base')
   })
+
+  it('stays bounded and tick-free while idle for 10 seconds', async () => {
+    resetMix()
+    let buffers = 0
+    let oscillators = 0
+    const gain = () => ({
+      gain: { value: 0, setValueAtTime() {}, linearRampToValueAtTime() {}, cancelScheduledValues() {}, exponentialRampToValueAtTime() {} },
+      connect() {},
+      disconnect() {},
+    })
+    class AudioContext {
+      currentTime = 0
+      state = 'running'
+      destination = {}
+      createGain() { return gain() }
+      createDynamicsCompressor() { return { threshold: { value: 0 }, ratio: { value: 1 }, connect() {}, disconnect() {} } }
+      createBiquadFilter() { return { type: '', frequency: { value: 0 }, connect() {}, disconnect() {} } }
+      createBufferSource() { buffers += 1; return { connect() {}, start() {}, stop() {}, loop: false } }
+      createOscillator() {
+        oscillators += 1
+        const node = {
+          type: 'sine',
+          frequency: { value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {} },
+          connect() {},
+          disconnect() {},
+          start() {},
+          stop() {},
+        }
+        return node
+      }
+      resume() { return Promise.resolve() }
+    }
+    const host = { AudioContext }
+    const pref = readAudioPref(null)
+    let prev: Ear | null = null
+    const cues: string[] = []
+    const started = Date.now()
+    while (Date.now() - started < 10000) {
+      const next = { ...blank, depth: 1 }
+      cues.push(...cuesFromDelta(deltaFromSnaps(prev, next)))
+      prev = next
+      playBed('d1', pref, host as never)
+      await new Promise((resolve) => setTimeout(resolve, 40))
+    }
+    const ledger = mixLedger()
+    expect(ledger.beds).toBe(1)
+    expect(ledger.timers).toBeLessThanOrEqual(1)
+    expect(ledger.oscillators).toBeLessThanOrEqual(4)
+    expect(ledger.oscillators).toBeGreaterThan(0)
+    expect(buffers).toBe(0)
+    expect(oscillators).toBeLessThanOrEqual(12)
+    const ticks = cues.filter((cue) => cue === 'player.step' || cue === 'player.heart' || cue === 'fuse.tick' || cue === 'world.tick' || cue === 'world.hum')
+    expect(ticks).toEqual([])
+    for (let i = 0; i < 40; i += 1) playBed(i % 2 === 0 ? 'd1' : 'd5', pref, host as never)
+    expect(mixLedger().beds).toBe(1)
+    expect(mixLedger().oscillators).toBeLessThanOrEqual(4)
+    const walking = cuesFromDelta(deltaFromSnaps(blank, { ...blank, stepping: true }))
+    expect(walking).toContain('player.step')
+    const still = cuesFromDelta(deltaFromSnaps({ ...blank, stepping: false }, { ...blank, stepping: false }))
+    expect(still).not.toContain('player.step')
+    resetMix()
+  }, 15000)
 
   it('rate-limits a swarm so the same hit cannot retrigger inside its gap', () => {
     const last = new Map<string, number>()

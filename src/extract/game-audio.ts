@@ -22,7 +22,7 @@ export function readAudioPref(raw: string | null): AudioPref {
     const muted = bits.u === '1' || (music <= 0 && sfx <= 0)
     return { muted, volume: sfx, music, sfx }
   }
-  return { muted: false, volume: 0.7, music: 0.45, sfx: 0.7 }
+  return { muted: false, volume: 0.7, music: 0.35, sfx: 0.7 }
 }
 
 export function writeAudioPref(pref: AudioPref): string {
@@ -36,7 +36,7 @@ function clamp01(n: number): number {
 }
 
 const GAP: Record<string, number> = {
-  'player.step': 160,
+  'player.step': 320,
   'player.swing': 90,
   'player.hit': 40,
   'player.glance': 80,
@@ -47,8 +47,8 @@ const GAP: Record<string, number> = {
   'world.pick': 90,
   'world.hazard': 180,
   'world.coin': 40,
-  'player.heart': 700,
-  'world.hum': 0,
+  'player.heart': 1600,
+  'world.hum': 2000,
 }
 
 export function allowSound(id: string, now: number, last: Map<string, number>): boolean {
@@ -182,7 +182,7 @@ export interface Ear {
 export function deltaFromSnaps(prev: Ear | null, next: Ear): CueDelta {
   if (!prev) return next.hum ? { hum: true } : {}
   const d: CueDelta = {}
-  if (next.stepping && !prev.stepping) d.step = true
+  if (next.stepping) d.step = true
   if (next.swing > prev.swing + 0.05) d.swing = true
   if (next.dodge > prev.dodge) d.dodge = true
   if (next.blocking && !prev.blocking) d.block = true
@@ -212,7 +212,6 @@ export function deltaFromSnaps(prev: Ear | null, next: Ear): CueDelta {
   if (next.depth > prev.depth) d.stairs = true
   if (next.coins > prev.coins) d.coin = true
   if (next.room !== prev.room) d.door = true
-  if (next.low) d.heart = true
   return d
 }
 
@@ -255,7 +254,6 @@ type AudioHost = { AudioContext?: AudioCtor; webkitAudioContext?: AudioCtor }
 let ctx: AudioContext | null = null
 let musicGain: GainNode | null = null
 let sfxGain: GainNode | null = null
-let bedNodes: { oscs: OscillatorNode[]; noise: AudioBufferSourceNode | null; gain: GainNode } | null = null
 let currentBed = ''
 const voices: { gain: GainNode; at: number }[] = []
 const last = new Map<string, number>()
@@ -336,64 +334,163 @@ export function playCue(id: SoundCue, pref: AudioPref, now = typeof performance 
   return true
 }
 
-const BEDS: Record<BedId, { freqs: number[]; noise: number }> = {
-  title: { freqs: [196, 247], noise: 0.02 },
-  base: { freqs: [164, 220], noise: 0.015 },
-  d1: { freqs: [82, 123], noise: 0.05 },
-  d2: { freqs: [98, 146], noise: 0.03 },
-  d3: { freqs: [130, 196], noise: 0.04 },
-  d4: { freqs: [110, 220], noise: 0.02 },
-  d5: { freqs: [87, 174], noise: 0.06 },
-  d6: { freqs: [73, 156], noise: 0.035 },
-  d7: { freqs: [55, 110], noise: 0.07 },
-  combat: { freqs: [98, 147, 196], noise: 0.04 },
-  boss: { freqs: [49, 73, 98], noise: 0.05 },
+/** Soft fifths and a slow pentatonic line. Sine only, no noise loop, no tick. */
+const PHRASE: Record<BedId, number[]> = {
+  title: [392, 440, 494, 392],
+  base: [330, 392, 440, 330],
+  d1: [196, 247, 220, 196, 165],
+  d2: [220, 262, 294, 220, 175],
+  d3: [233, 294, 349, 233, 196],
+  d4: [262, 330, 392, 262, 220],
+  d5: [175, 220, 262, 175, 147],
+  d6: [156, 196, 233, 156, 131],
+  d7: [147, 185, 220, 147, 123],
+  combat: [220, 262, 330, 220],
+  boss: [110, 165, 220, 147],
+}
+
+const PAD: Record<BedId, [number, number]> = {
+  title: [392, 494],
+  base: [330, 440],
+  d1: [196, 247],
+  d2: [220, 262],
+  d3: [233, 294],
+  d4: [262, 330],
+  d5: [175, 220],
+  d6: [156, 196],
+  d7: [147, 185],
+  combat: [220, 277],
+  boss: [110, 165],
+}
+
+let generation = 0
+let liveOsc = 0
+let timers = 0
+let stopPhrase: (() => void) | null = null
+const padOscs: OscillatorNode[] = []
+const noteOscs = new Set<OscillatorNode>()
+let bedBus: GainNode | null = null
+
+export function mixLedger(): { oscillators: number; timers: number; beds: number } {
+  return { oscillators: liveOsc, timers, beds: currentBed ? 1 : 0 }
+}
+
+function watchOsc(osc: OscillatorNode): void {
+  liveOsc += 1
+  let released = false
+  const release = () => {
+    if (released) return
+    released = true
+    liveOsc = Math.max(0, liveOsc - 1)
+    noteOscs.delete(osc)
+  }
+  const orig = osc.stop.bind(osc)
+  const hasEnded = typeof osc.addEventListener === 'function'
+  if (hasEnded) osc.addEventListener('ended', release)
+  osc.stop = ((when?: number) => {
+    try { orig(when as number) } catch { release() }
+    if (!hasEnded) release()
+  }) as OscillatorNode['stop']
+}
+
+function stopOsc(osc: OscillatorNode): void {
+  try { osc.stop() } catch { /* already scheduled */ }
+  try { osc.disconnect() } catch { /* already */ }
+}
+
+function silenceBed(): void {
+  generation += 1
+  if (stopPhrase) stopPhrase()
+  stopPhrase = null
+  while (padOscs.length) {
+    const osc = padOscs.pop()
+    if (osc) stopOsc(osc)
+  }
+  for (const osc of [...noteOscs]) stopOsc(osc)
+  noteOscs.clear()
+  bedBus = null
+  currentBed = ''
+}
+
+export function resetMix(): void {
+  silenceBed()
+  ctx = null
+  musicGain = null
+  sfxGain = null
+  liveOsc = 0
+  timers = 0
+}
+
+function phraseVoice(audio: AudioContext, dest: GainNode, freq: number, gen: number): void {
+  if (gen !== generation) return
+  const osc = audio.createOscillator()
+  osc.type = 'sine'
+  osc.frequency.value = freq
+  const filter = audio.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.value = 680
+  const gain = audio.createGain()
+  const when = audio.currentTime
+  gain.gain.setValueAtTime(0.0001, when)
+  gain.gain.linearRampToValueAtTime(0.07, when + 0.08)
+  gain.gain.linearRampToValueAtTime(0.0001, when + 1.05)
+  osc.connect(filter)
+  filter.connect(gain)
+  gain.connect(dest)
+  noteOscs.add(osc)
+  watchOsc(osc)
+  osc.start(when)
+  osc.stop(when + 1.1)
 }
 
 export function playBed(id: BedId, pref: AudioPref, host: AudioHost | null = typeof window === 'undefined' ? null : window): void {
   const audio = context(host)
   if (!audio || !musicGain) return
-  const want = pref.muted ? 0 : pref.music * (id === 'boss' ? 0.22 : id === 'combat' ? 0.16 : 0.12)
-  if (id === currentBed && bedNodes) {
+  const want = pref.muted ? 0 : pref.music * 0.22
+  if (id === currentBed && bedBus) {
     musicGain.gain.cancelScheduledValues(audio.currentTime)
     musicGain.gain.linearRampToValueAtTime(want, audio.currentTime + 0.2)
     return
   }
-  if (bedNodes) {
-    const old = bedNodes
-    old.gain.gain.cancelScheduledValues(audio.currentTime)
-    old.gain.gain.linearRampToValueAtTime(0.0001, audio.currentTime + 0.45)
-    window.setTimeout(() => {
-      old.oscs.forEach((osc) => { try { osc.stop() } catch { /* ended */ } })
-      try { old.noise?.stop() } catch { /* ended */ }
-    }, 500)
-  }
+  silenceBed()
   currentBed = id
-  const spec = BEDS[id]
+  generation += 1
+  const gen = generation
   const bus = audio.createGain()
-  bus.gain.value = 0.0001
+  bus.gain.value = 1
+  const filter = audio.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.value = 520
+  filter.connect(bus)
   bus.connect(musicGain)
-  const oscs = spec.freqs.map((freq, index) => {
+  bedBus = bus
+  const pair = PAD[id]
+  for (const freq of pair) {
     const osc = audio.createOscillator()
-    osc.type = index === 0 ? 'sine' : 'triangle'
+    osc.type = 'sine'
     osc.frequency.value = freq
-    const g = audio.createGain()
-    g.gain.value = index === 0 ? 0.7 : 0.28
-    osc.connect(g)
-    g.connect(bus)
+    const gain = audio.createGain()
+    gain.gain.value = 0.06
+    osc.connect(gain)
+    gain.connect(filter)
+    watchOsc(osc)
     osc.start()
-    return osc
-  })
-  const src = audio.createBufferSource()
-  src.buffer = noiseBuffer(audio)
-  src.loop = true
-  const ng = audio.createGain()
-  ng.gain.value = spec.noise
-  src.connect(ng)
-  ng.connect(bus)
-  src.start()
-  bus.gain.linearRampToValueAtTime(1, audio.currentTime + 0.45)
+    padOscs.push(osc)
+  }
+  const line = PHRASE[id]
+  let step = 0
+  phraseVoice(audio, filter, line[0]!, gen)
+  const handle = setInterval(() => {
+    if (gen !== generation) return
+    step = (step + 1) % line.length
+    phraseVoice(audio, filter, line[step]!, gen)
+  }, 1700)
+  timers += 1
+  stopPhrase = () => {
+    clearInterval(handle)
+    timers = Math.max(0, timers - 1)
+    stopPhrase = null
+  }
   musicGain.gain.cancelScheduledValues(audio.currentTime)
-  musicGain.gain.linearRampToValueAtTime(want, audio.currentTime + 0.45)
-  bedNodes = { oscs, noise: src, gain: bus }
+  musicGain.gain.linearRampToValueAtTime(want, audio.currentTime + 0.4)
 }
