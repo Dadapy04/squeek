@@ -34,6 +34,7 @@ interface BossFall {
   links: { x: number; y: number }[]
   breed?: string
   foeKind?: string
+  cut: number
 }
 
 interface Crumb {
@@ -168,10 +169,12 @@ export function drawExtract(
     ctx.fillStyle = 'rgba(4, 6, 10, 0.55)'
     ctx.fillRect(0, 0, width, height)
   }
-  if (run.zone === 'sarang') drawStairs(ctx, at, scale, run)
+  drawTorches(ctx, run, scale, at)
+  if (run.zone === 'sarang' && (run.bossVanish ?? 0) <= 0.12) drawStairs(ctx, at, scale, run)
   drawSoulShrine(ctx, run, at, scale)
   for (const crate of runCrates(run)) {
     if (crate.zone !== run.zone) continue
+    if (crate.id.startsWith('boss-chest') && (run.bossVanish ?? 0) > 0.12) continue
     drawCrate(ctx, at(crate.x, crate.y), scale, crate.id, run.opened.includes(crate.id), run.age)
   }
   if ((run.depth || 1) >= 2) {
@@ -218,19 +221,23 @@ export function drawExtract(
     }
   }
   for (const death of deaths) {
-    const collapse = 1 - death.life / death.max
-    const head = death.links[0] ?? { x: death.x, y: death.y }
-    const curled = death.links.map((link, index) => ({
-      x: link.x + (head.x - link.x) * collapse * 0.85 + Math.cos(index + collapse * 4) * 8 * (1 - collapse),
-      y: link.y + (head.y - link.y) * collapse * 0.85 + Math.sin(index + collapse * 4) * 8 * (1 - collapse),
-    }))
-    if (death.breed) {
-      const p = at(death.x, death.y)
+    const gone = 1 - death.life / death.max
+    const p = at(death.x, death.y)
+    const blink = gone > 0.2 && gone < 0.82
+    const flicker = Math.floor(run.age * 16) % 2 === 0
+    const fade = gone >= 0.82 ? (gone - 0.82) / 0.18 : 0
+    if (gone < 0.22) drawKillSlash(ctx, p.x, p.y, scale, death.cut, gone / 0.22)
+    if (!(blink && !flicker)) {
       ctx.save()
-      ctx.globalAlpha = Math.max(0.15, 1 - collapse)
-      drawCreature(ctx, p.x, p.y, scale * (1 - collapse * 0.45), { kind: death.foeKind ?? 'boss', breed: death.breed, flash: collapse < 0.4 ? 0.2 : 0, aim: death.aim, wind: 0, dash: 0, phase: 0 }, run.age)
+      ctx.globalAlpha = Math.max(0, 1 - fade)
+      if (blink && flicker) {
+        ctx.filter = 'brightness(2.4)'
+      }
+      if (death.breed) drawCreature(ctx, p.x, p.y, scale * 2.4, { kind: death.foeKind ?? 'boss', breed: death.breed, flash: gone < 0.22 ? 0.4 : 0, aim: death.aim, wind: 0, dash: 0, phase: 0 }, run.age)
+      else drawCentipede(ctx, death.links.map((link) => at(link.x, link.y)), scale, 0, gone < 0.22 ? 0.35 : 0, run.age, death.aim, 0, death.depth, 0)
       ctx.restore()
-    } else drawCentipede(ctx, curled.map((link) => at(link.x, link.y)), scale * (1 - collapse * 0.35), 0, death.life > 0.45 ? 0.2 : 0, run.age, death.aim, 0, death.depth, collapse)
+    }
+    if (fade > 0.2) drawDissolve(ctx, p.x, p.y, scale, fade, run.age)
   }
   drawSoulWorld(ctx, run, at, scale, elapsed)
   const hero = at(run.x, run.y)
@@ -1525,6 +1532,115 @@ function drawExitSign(ctx: CanvasRenderingContext2D, x: number, y: number, scale
   ctx.fillText(t('exit.sign'), fx + 8 * s, top + h / 2)
 }
 
+function drawKillSlash(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number, facing: number, t: number): void {
+  ctx.save()
+  ctx.translate(Math.round(x), Math.round(y))
+  ctx.rotate(facing)
+  ctx.globalAlpha = Math.max(0, 1 - t)
+  ctx.strokeStyle = '#fff6d2'
+  ctx.lineWidth = Math.max(2, 3 * scale)
+  ctx.beginPath()
+  ctx.moveTo(-30 * scale, 12 * scale)
+  ctx.lineTo(34 * scale, -16 * scale)
+  ctx.stroke()
+  ctx.strokeStyle = '#f2c04a'
+  ctx.lineWidth = Math.max(1, scale)
+  ctx.beginPath()
+  ctx.moveTo(-22 * scale, 6 * scale)
+  ctx.lineTo(26 * scale, -8 * scale)
+  ctx.stroke()
+  ctx.fillStyle = `rgba(255, 246, 220, ${0.45 * (1 - t)})`
+  ctx.beginPath()
+  ctx.arc(0, 0, (16 + t * 18) * scale, 0, Math.PI * 2)
+  ctx.fill()
+  for (let i = 0; i < 7; i += 1) {
+    const ang = i / 7 * Math.PI * 2 + facing
+    const dist = (10 + t * 22) * scale
+    ctx.fillStyle = i % 2 === 0 ? '#fff6d2' : '#e25a2a'
+    ctx.fillRect(Math.round(Math.cos(ang) * dist), Math.round(Math.sin(ang) * dist), Math.max(2, scale), Math.max(2, scale))
+  }
+  ctx.restore()
+}
+
+function drawDissolve(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number, fade: number, age: number): void {
+  for (let i = 0; i < 8; i += 1) {
+    const ang = i / 8 * Math.PI * 2 + age
+    const dist = (6 + fade * 16) * scale
+    ctx.globalAlpha = Math.max(0, 0.7 - fade)
+    ctx.fillStyle = i % 2 === 0 ? '#e7e2d4' : '#f2c04a'
+    ctx.fillRect(Math.round(x + Math.cos(ang) * dist), Math.round(y + Math.sin(ang) * dist - fade * 8), Math.max(2, scale), Math.max(2, scale))
+  }
+  ctx.globalAlpha = 1
+}
+
+const torchGlowCache = new Map<string, HTMLCanvasElement>()
+
+function torchGlow(color: string): HTMLCanvasElement | null {
+  const hit = torchGlowCache.get(color)
+  if (hit) return hit
+  if (typeof document === 'undefined') return null
+  const board = document.createElement('canvas')
+  board.width = 48
+  board.height = 48
+  const pen = board.getContext('2d')
+  if (!pen) return null
+  const grad = pen.createRadialGradient(24, 24, 2, 24, 24, 23)
+  grad.addColorStop(0, color)
+  grad.addColorStop(1, 'rgba(0,0,0,0)')
+  pen.fillStyle = grad
+  pen.fillRect(0, 0, 48, 48)
+  torchGlowCache.set(color, board)
+  return board
+}
+
+function torchColors(depth: number): { bracket: string; cap: string; flame: string; core: string; glow: string } {
+  const level = Math.max(1, Math.min(7, Math.floor(depth) || 1))
+  const row = [
+    { bracket: '#6a442c', cap: '#c4a15a', flame: '#f2c04a', core: '#fff1c2', glow: 'rgba(242,192,74,0.38)' },
+    { bracket: '#3d5a32', cap: '#8fbf6a', flame: '#e7c27a', core: '#fff6d0', glow: 'rgba(143,191,106,0.32)' },
+    { bracket: '#5a3a68', cap: '#c4f27a', flame: '#d6f27a', core: '#f4ffe0', glow: 'rgba(196,242,122,0.30)' },
+    { bracket: '#8a6a32', cap: '#e7c27a', flame: '#f2c04a', core: '#fff1c2', glow: 'rgba(242,192,74,0.34)' },
+    { bracket: '#5c6570', cap: '#9aa0a8', flame: '#e25a2a', core: '#f2c04a', glow: 'rgba(226,90,42,0.34)' },
+    { bracket: '#4a3a58', cap: '#d5dee6', flame: '#e7e2d4', core: '#fff', glow: 'rgba(213,222,230,0.28)' },
+    { bracket: '#6e2420', cap: '#c43a6a', flame: '#e25a2a', core: '#ffb020', glow: 'rgba(226,90,42,0.40)' },
+  ]
+  return row[level - 1]!
+}
+
+function drawTorches(
+  ctx: CanvasRenderingContext2D,
+  run: Run,
+  scale: number,
+  at: (x: number, y: number) => { x: number; y: number },
+): void {
+  const list = (run.chart?.torches ?? []).filter((torch) => torch.room === run.roomId && torch.zone === run.zone)
+  if (list.length === 0) return
+  const look = torchColors(run.depth || 1)
+  const frame = Math.floor(run.age * 9) % 3
+  let glows = 0
+  const glow = effectBudget === 'full' ? torchGlow(look.glow) : null
+  for (const torch of list) {
+    const p = at(torch.x, torch.y)
+    if (glow && glows < 3) {
+      const size = 34 * scale
+      ctx.globalAlpha = 0.85
+      ctx.drawImage(glow, Math.round(p.x - size / 2), Math.round(p.y - size / 2), size, size)
+      ctx.globalAlpha = 1
+      glows += 1
+    }
+    const s = Math.max(1, scale)
+    ctx.fillStyle = look.bracket
+    ctx.fillRect(Math.round(p.x - 2 * s), Math.round(p.y), Math.round(4 * s), Math.round(7 * s))
+    ctx.fillStyle = look.cap
+    ctx.fillRect(Math.round(p.x - 3 * s), Math.round(p.y - 1 * s), Math.round(6 * s), Math.round(2 * s))
+    const lean = frame === 1 ? s : frame === 2 ? -s : 0
+    ctx.fillStyle = look.flame
+    ctx.fillRect(Math.round(p.x - s + lean), Math.round(p.y - (5 + (frame === 0 ? 1 : 0)) * s), Math.round(2 * s), Math.round(4 * s))
+    ctx.fillStyle = look.core
+    ctx.fillRect(Math.round(p.x + lean), Math.round(p.y - 3 * s), s, Math.round(2 * s))
+  }
+}
+
 function drawStairs(ctx: CanvasRenderingContext2D, at: (x: number, y: number) => { x: number; y: number }, scale: number, run: Run): void {
   if ((run.depth || 1) >= 7) return
   const p = at(STAIRS.x, STAIRS.y)
@@ -1677,10 +1793,11 @@ function watchBoss(run: Run): void {
       y: foe.y,
       aim: foe.aim,
       depth: run.depth || 1,
-      life: 0.7,
-      max: 0.7,
+      life: 1.55,
+      max: 1.55,
       breed: kelabang ? undefined : String(foe.breed),
       foeKind: foe.kind,
+      cut: run.facing,
       links: kelabang ? syncCentipede(foe).map((link) => ({ ...link })) : [{ x: foe.x, y: foe.y }],
     })
   }

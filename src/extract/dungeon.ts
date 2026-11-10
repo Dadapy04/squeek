@@ -80,6 +80,15 @@ export interface SpawnNode {
   elite: boolean
 }
 
+export interface TorchNode {
+  id: string
+  room: string
+  zone: ZoneName
+  x: number
+  y: number
+  wall: Dir
+}
+
 export interface FloorChart {
   depth: number
   seed: number
@@ -88,6 +97,7 @@ export interface FloorChart {
   veins: VeinNode[]
   props: PropNode[]
   spawns: SpawnNode[]
+  torches: TorchNode[]
 }
 
 export interface ThemePaint {
@@ -239,7 +249,34 @@ export function generateFloor(depth: number, seed: number): FloorChart {
   const veins = placeVeins(rooms, level, salt, rand)
   const props = placeProps(rooms, level, rand)
   const spawns = placeSpawns(rooms, level, rand)
-  return { depth: level, seed: Math.floor(seed) || 1, theme, rooms, veins, props, spawns }
+  const torches = placeTorches(rooms, level, Math.floor(seed) || 1)
+  return { depth: level, seed: Math.floor(seed) || 1, theme, rooms, veins, props, spawns, torches }
+}
+
+/** Wall sconces. Own seed so room layout stays put. Not on a door. */
+export function placeTorches(rooms: RoomNode[], depth: number, seed: number): TorchNode[] {
+  const rand = rng((Math.floor(Math.abs(seed)) || 1) * 97 + depth * 13 + 5)
+  const torches: TorchNode[] = []
+  for (const room of rooms) {
+    if (rand() > 0.62) continue
+    const walls = DIRS.filter((dir) => !room.doors.some((door) => door.dir === dir))
+    if (walls.length === 0) continue
+    const count = walls.length > 1 && rand() < 0.28 ? 2 : 1
+    for (let n = 0; n < count; n += 1) {
+      const wall = walls.splice(Math.floor(rand() * walls.length), 1)[0]
+      if (!wall) break
+      const along = Math.round((rand() - 0.5) * 70)
+      const spot = wall === 'n'
+        ? { x: along, y: -ROOM_H / 2 + 16 }
+        : wall === 's'
+          ? { x: along, y: ROOM_H / 2 - 20 }
+          : wall === 'w'
+            ? { x: -ROOM_W / 2 + 14, y: Math.round(along * 0.7) }
+            : { x: ROOM_W / 2 - 18, y: Math.round(along * 0.7) }
+      torches.push({ id: `torch-${room.id}-${wall}`, room: room.id, zone: room.zone, x: spot.x, y: spot.y, wall })
+    }
+  }
+  return torches
 }
 
 function freeSpots(rooms: RoomNode[]): { id: string; dir: Dir }[] {

@@ -4,7 +4,7 @@ import { drawBlockStrip, drawCarryStrip, drawContactSheet, drawDirectionStrip, d
 import { paintTitleScreen, titleUsesDesktopPrompt } from './title.ts'
 import { clampCenter, followBase, stickVector } from './float-stick.ts'
 import { AUDIO_KEY, playBoom, playFuseTick, playSoulBurst, playSoulCharge, resumeAudio } from './soul-audio.ts'
-import { bedFor, cuesFromDelta, deltaFromSnaps, playBed, playBossFinale, playCue, readAudioPref as readMix, unlockAudio, writeAudioPref, type Ear } from './game-audio.ts'
+import { bedFor, cuesFromDelta, deltaFromSnaps, playBed, playBossFinale, playCue, playTorchCrackle, readAudioPref as readMix, unlockAudio, writeAudioPref, type Ear } from './game-audio.ts'
 import { armAttack, attackLive, blockSecondTap, disarmAttack, holdReleased, type AttackBuffer } from './input-lock.ts'
 import { bossTitle, drawChestStrip, drawExtract, drawGallery, drawLootStrip, drawRevealStrip, setEffectBudget } from './view.ts'
 import { backingRatio } from './camera.ts'
@@ -916,6 +916,8 @@ function hear(run: ExtractSave['run']): void {
   const near = foeView(run).some((foe) => foe.hp > 0 && (foe.wind > 0 || (foe.heard ?? 0) > 0 || Math.hypot(foe.x - run.x, foe.y - run.y) < 130))
   const boss = run.foes.some((foe) => foe.kind === 'boss' && foe.room === run.roomId && foe.hp > 0 && !run.slain.includes(foe.id))
   playBed(bedFor({ run: true, depth: run.depth, combat: near, boss }), pref)
+  const warm = (run.chart?.torches ?? []).some((torch) => torch.room === run.roomId && Math.hypot(torch.x - run.x, torch.y - run.y) < 78)
+  if (warm) playTorchCrackle(pref)
 }
 function watchSoul(run: NonNullable<ExtractSave['run']>): void {
   const cast = run.soul?.cast ?? 0

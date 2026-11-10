@@ -169,4 +169,28 @@ describe('ore table', () => {
       expect(coins).toBeLessThanOrEqual(COIN_BAND[rarity].max)
     }
   })
+
+  it('hangs the same torches for a seed and skips some rooms', () => {
+    const a = generateFloor(3, 11)
+    const b = generateFloor(3, 11)
+    expect(a.torches).toEqual(b.torches)
+    expect(a.torches.length).toBeGreaterThan(0)
+    expect(a.torches.length).toBeLessThan(a.rooms.length * 2)
+    const lit = new Set(a.torches.map((torch) => torch.room))
+    expect(lit.size).toBeLessThan(a.rooms.length)
+    for (const torch of a.torches) {
+      const room = a.rooms.find((item) => item.id === torch.room)
+      expect(room).toBeTruthy()
+      expect(room!.doors.some((door) => door.dir === torch.wall)).toBe(false)
+      const onWall = Math.abs(torch.x) > 70 || Math.abs(torch.y) > 110
+      expect(onWall).toBe(true)
+    }
+    const other = generateFloor(3, 12)
+    expect(other.torches.map((torch) => `${torch.room}:${torch.wall}:${torch.x}`).join('|')).not.toBe(
+      a.torches.map((torch) => `${torch.room}:${torch.wall}:${torch.x}`).join('|'),
+    )
+    expect(generateFloor(1, 4).torches).toEqual(generateFloor(1, 4).torches)
+    expect(generateFloor(5, 4).torches.length).toBeGreaterThan(0)
+    expect(generateFloor(7, 4).torches.length).toBeGreaterThan(0)
+  })
 })

@@ -77,11 +77,39 @@ describe('seven depths', () => {
     expect(Math.abs(run.x - x)).toBeLessThan(2)
     for (let i = 0; i < 10 && (run.bossFinale ?? 0) > 0; i += 1) step(run, still, 0.05)
     expect(run.bossFinale).toBe(0)
+    expect(run.bossVanish ?? 0).toBeGreaterThan(0)
     boss.hp = 30
     run.slain = run.slain.filter((id) => id !== boss.id)
     for (let i = 0; i < 12 && boss.hp > 0; i += 1) step(run, i === 0 ? attack : still, 0.05)
     expect(run.bossFinale).toBe(0)
     expect(run.bossFinaleUsed).toBe(true)
+  })
+
+  it('ends the boss death with the boss gone and the chest and stairs still there', () => {
+    const save = freshSave()
+    deploy(save, [{ kind: 'sword', n: 1 }])
+    const run = save.run!
+    const boss = run.foes.find((foe) => foe.kind === 'boss')!
+    run.zone = boss.zone
+    run.x = boss.x - 20
+    run.y = boss.y
+    run.facing = 0
+    boss.hp = 20
+    const attack: Input = { ...still, attack: true }
+    for (let i = 0; i < 12 && !run.slain.includes(boss.id); i += 1) step(run, i === 0 ? attack : still, 0.05)
+    expect(run.slain.includes(boss.id)).toBe(true)
+    expect(boss.hp).toBe(0)
+    expect(stairsOpen(run)).toBe(true)
+    expect(run.rewards.some((crate) => crate.id.startsWith('boss-chest'))).toBe(true)
+    expect(run.bossVanish ?? 0).toBeGreaterThan(0.8)
+    for (let i = 0; i < 40; i += 1) step(run, still, 0.05)
+    expect(run.bossVanish).toBe(0)
+    expect(run.slain.includes(boss.id)).toBe(true)
+    expect(stairsOpen(run)).toBe(true)
+    expect(run.rewards.some((crate) => crate.id.startsWith('boss-chest'))).toBe(true)
+    const x = run.x
+    step(run, { ...still, moveX: 1 }, 0.05)
+    expect(run.x).not.toBe(x)
   })
 
   it('gives every depth its own regulars and one boss, and keeps the kelabang at depth 1', () => {

@@ -178,6 +178,8 @@ export interface Run {
   shake?: number
   /** Real seconds of cosmetic slow-mo after a boss dies. Not stored. */
   bossFinale?: number
+  /** Real seconds the boss sprite blinks and fades. Not stored. */
+  bossVanish?: number
   /** The killing-blow sting already started. Not stored. */
   bossFinaleUsed?: boolean
   /** Counts barrel blasts so the boom can play once. Not stored. */
@@ -1327,6 +1329,8 @@ function slayFoe(run: Run, foe: Foe): void {
     if (!run.bossFinaleUsed) {
       run.bossFinaleUsed = true
       run.bossFinale = 0.34
+      run.bossVanish = 1.55
+      run.shake = Math.max(run.shake ?? 0, 0.42)
     }
   }
   else {
@@ -1397,6 +1401,7 @@ export function step(run: Run, input: Input, dt: number): StepResult {
   const real = Math.max(0, Math.min(0.05, dt))
   const slowing = (run.bossFinale ?? 0) > 0
   if (slowing) run.bossFinale = Math.max(0, (run.bossFinale ?? 0) - real)
+  if ((run.bossVanish ?? 0) > 0) run.bossVanish = Math.max(0, (run.bossVanish ?? 0) - real)
   const h = slowing ? real * 0.28 : real
   run.stam = Math.min(STAM_MAX, run.stam + 16 * h)
   run.snare = Math.max(0, (run.snare ?? 0) - h)

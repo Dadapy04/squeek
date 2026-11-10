@@ -243,7 +243,8 @@ function recipe(id: string): Recipe {
   const freq = 90 + (n % 28) * 18
   if (id.includes('boom') || id.includes('death') || id.includes('break')) return { wave: 'sawtooth', freq: 70 + (n % 5) * 12, dur: 0.28, slide: 0.35, noise: 0.7, gain: 0.22 }
   if (id.includes('fanfare') || id.includes('upgrade') || id.includes('take')) return { wave: 'square', freq: 440 + (n % 6) * 40, dur: 0.22, slide: 1.4, noise: 0, gain: 0.12 }
-  if (id.includes('step') || id.includes('pick') || id.includes('coin')) return { wave: 'square', freq: 140 + (n % 8) * 20, dur: 0.05, slide: 0.6, noise: 0.4, gain: 0.08 }
+  if (id === 'player.step') return { wave: 'sine', freq: 190, dur: 0.07, slide: 0.78, noise: 0.04, gain: 0.04 }
+  if (id.includes('pick') || id.includes('coin')) return { wave: 'square', freq: 140 + (n % 8) * 20, dur: 0.05, slide: 0.6, noise: 0.4, gain: 0.08 }
   if (id.includes('wind') || id.includes('swing') || id.includes('dodge')) return { wave: 'sawtooth', freq: 520, dur: 0.12, slide: 0.4, noise: 0.25, gain: 0.08 }
   if (id.includes('hurt') || id.includes('hazard')) return { wave: 'square', freq: 180, dur: 0.1, slide: 0.5, noise: 0.3, gain: 0.1 }
   return { wave: 'square', freq, dur: 0.08, slide: 0.8, noise: id.includes('tick') || id.includes('tap') ? 0.15 : 0, gain: 0.09 }
@@ -302,8 +303,9 @@ export function playCue(id: SoundCue, pref: AudioPref, now = typeof performance 
   if (!audio || !sfxGain) return false
   if (audio.state === 'suspended') void audio.resume()
   const tone = RECIPE[id]
+  const step = id === 'player.step'
   const when = audio.currentTime
-  const jitter = 0.94 + Math.random() * 0.12
+  const jitter = step ? 0.84 + Math.random() * 0.3 : 0.94 + Math.random() * 0.12
   while (voices.length >= MAX_VOICES) {
     const old = voices.shift()
     try { old?.gain.disconnect() } catch { /* already ended */ }
@@ -311,7 +313,7 @@ export function playCue(id: SoundCue, pref: AudioPref, now = typeof performance 
   const gain = audio.createGain()
   const peak = tone.gain * pref.sfx
   gain.gain.setValueAtTime(0.0001, when)
-  gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), when + 0.008)
+  gain.gain.linearRampToValueAtTime(Math.max(0.0002, peak), when + (step ? 0.03 : 0.008))
   gain.gain.exponentialRampToValueAtTime(0.0001, when + tone.dur)
   gain.connect(sfxGain)
   voices.push({ gain, at: now })
@@ -319,7 +321,13 @@ export function playCue(id: SoundCue, pref: AudioPref, now = typeof performance 
   osc.type = tone.wave
   osc.frequency.setValueAtTime(tone.freq * jitter, when)
   osc.frequency.exponentialRampToValueAtTime(Math.max(40, tone.freq * tone.slide * jitter), when + tone.dur)
-  osc.connect(gain)
+  if (step) {
+    const filter = audio.createBiquadFilter()
+    filter.type = 'lowpass'
+    filter.frequency.value = 420
+    osc.connect(filter)
+    filter.connect(gain)
+  } else osc.connect(gain)
   osc.start(when)
   osc.stop(when + tone.dur + 0.02)
   if (tone.noise > 0) {
@@ -415,6 +423,7 @@ function silenceBed(): void {
 
 let finaleArmed = false
 let duckUntil = 0
+let crackleAt = -Infinity
 
 export function armBossFinale(): boolean {
   if (finaleArmed) return false
@@ -437,6 +446,7 @@ export function resetMix(): void {
   timers = 0
   finaleArmed = false
   duckUntil = 0
+  crackleAt = -Infinity
 }
 
 function phraseVoice(audio: AudioContext, dest: GainNode, freq: number, gen: number): void {
@@ -573,5 +583,31 @@ export function playBossFinale(depth: number, pref: AudioPref, host: AudioHost |
   sting.forEach((freq, index) => {
     slideSine(audio, voices, now + 1.15 + index * 0.14, freq * pitch, 0.22, 0.08 * body)
   })
+  return true
+}
+
+/** Quiet filtered crackle. At most once every 1.4s, and only through the effects slider. */
+export function playTorchCrackle(pref: AudioPref, now = typeof performance === 'undefined' ? Date.now() : performance.now(), host: AudioHost | null = typeof window === 'undefined' ? null : window): boolean {
+  if (pref.muted || pref.sfx <= 0) return false
+  if (now - crackleAt < 1400) return false
+  const audio = context(host)
+  if (!audio || !sfxGain) return false
+  crackleAt = now
+  const when = audio.currentTime
+  const src = audio.createBufferSource()
+  src.buffer = noiseBuffer(audio)
+  const filter = audio.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.value = 380
+  const gain = audio.createGain()
+  const peak = 0.015 * pref.sfx
+  gain.gain.setValueAtTime(0.0001, when)
+  gain.gain.linearRampToValueAtTime(Math.max(0.0002, peak), when + 0.04)
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.18)
+  src.connect(filter)
+  filter.connect(gain)
+  gain.connect(sfxGain)
+  src.start(when)
+  src.stop(when + 0.2)
   return true
 }
