@@ -213,6 +213,10 @@ export interface ExtractSave {
   swordLevel: number
   shieldLevel: number
   bagSlots: number
+  /** Hint ids already dismissed. Missing on old saves. */
+  tutorialSeen?: string[]
+  /** True after Skip, or for a veteran save that never had the tutorial. */
+  tutorialSkip?: boolean
 }
 
 export interface Input {
@@ -484,6 +488,8 @@ export function freshSave(): ExtractSave {
     swordLevel: 1,
     shieldLevel: 1,
     bagSlots: 12,
+    tutorialSeen: [],
+    tutorialSkip: false,
   }
 }
 

@@ -3,6 +3,7 @@ import { asBlade, bladesOf, DEPTH_CAP } from './depths.ts'
 import { asSpear, rollSpear, type Spear } from './spear.ts'
 import { mintUnit, readUnit, type ItemUnit } from './coins.ts'
 import { bagSlotsOf, clampLevel, shieldMaxFor } from './economy.ts'
+import { normalizeTutorial } from './tutorial.ts'
 import { ensureChart, HP_MAX, HP_OLD, SHIELD_MAX, freshSave, scheduleSoul, spawnRoster, type Crate, type Drop, type ExtractSave, type Foe, type Insured, type ItemKind, type Run, type SoulRite, type Stack, type ZoneId } from './sim.ts'
 
 export const EXTRACT_SAVE_KEY = 'npcs-burrow-pixel-extract.save.v1'
@@ -71,6 +72,9 @@ function sanitize(value: unknown): ExtractSave {
   save.blades = bladesOf((raw as { blades?: unknown }).blades)
   save.blade = asBlade((raw as { blade?: unknown }).blade)
   save.ventures = Math.max(0, Math.floor(num(raw.ventures)))
+  const flags = normalizeTutorial((raw as { tutorialSeen?: unknown }).tutorialSeen, (raw as { tutorialSkip?: unknown }).tutorialSkip, save.ventures)
+  save.tutorialSeen = flags.seen
+  save.tutorialSkip = flags.skip
   save.spears = spearsOf((raw as { spears?: unknown }).spears)
   save.spear = asSpear((raw as { spear?: unknown }).spear)
   save.run = runOf(raw.run)

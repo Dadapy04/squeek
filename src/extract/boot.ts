@@ -14,6 +14,8 @@ import { loadExtract, writeExtract } from './save.ts'
 import { ITEM_NAME, RARITY_COLOR, RARITY_NAME, STASH_SLOTS, type CoinRarity, type ItemUnit } from './coins.ts'
 import { bladeDisplay, bossDisplay, depthPlan } from './depths.ts'
 import { currentLocale, onLocale, setLocale, t, type MsgKey } from './i18n.ts'
+import { roomAt } from './dungeon.ts'
+import { markSeen, replayTutorial, skipTutorial, tipAnchor, tipToShow, type TipId, type TutorialWorld } from './tutorial.ts'
 import { bagSlotsOf, needsSellConfirm, nextBagUpgrade, shieldMaxFor, swordDamage, swordReadout } from './economy.ts'
 import { spearLabel, spearPower, spearStatLine, type Spear } from './spear.ts'
 import { applyWorkshop, workshopAsk, workshopView, type WorkshopAction } from './workshop.ts'
@@ -102,6 +104,7 @@ mapCanvas.addEventListener('pointerdown', (event) => {
   event.preventDefault()
   event.stopPropagation()
   mapCanvas.classList.toggle('big')
+  rememberTip('map')
 })
 const ctx = canvas.getContext('2d')!
 const blockBtn = document.querySelector<HTMLButtonElement>('#block')
@@ -272,13 +275,37 @@ document.querySelector('#settings')!.addEventListener('pointerdown', (event) => 
 document.querySelector('#workshop')!.addEventListener('pointerdown', (event) => {
   if (event.target === event.currentTarget) closeWorkshop()
 })
-document.querySelector('#openBag')!.addEventListener('click', () => openBag())
+document.querySelector('#openBag')!.addEventListener('click', () => {
+  if (save.run && bagFull(save.run)) rememberTip('bagfull')
+  openBag()
+})
 document.querySelector('#bagSwap')!.addEventListener('click', () => openBag())
 document.querySelector('#bagDrop1')!.addEventListener('click', () => dropBag(1))
 document.querySelector('#bagDropAll')!.addEventListener('click', () => dropBag(99))
 document.querySelector('#bagUse')!.addEventListener('click', () => useBag())
 document.querySelector('#openShop')!.addEventListener('click', () => openPanel('btn.workshop', 'shop.leadRun'))
-document.querySelector('#openWorkshop')!.addEventListener('click', () => openWorkshop())
+document.querySelector('#openWorkshop')!.addEventListener('click', () => { rememberTip('workshop'); openWorkshop() })
+document.querySelector('#tutorialReplay')?.addEventListener('click', () => {
+  const next = replayTutorial()
+  save.tutorialSeen = next.seen
+  save.tutorialSkip = next.skip
+  writeExtract(storage, save)
+  closeSettings()
+  refreshTip()
+})
+document.querySelector('#tipX')?.addEventListener('click', () => {
+  const id = document.querySelector<HTMLElement>('#tip')?.dataset.tip as TipId | undefined
+  if (id) rememberTip(id)
+  refreshTip()
+})
+document.querySelector('#tipSkip')?.addEventListener('click', () => {
+  const next = skipTutorial({ seen: save.tutorialSeen ?? [], skip: false })
+  save.tutorialSeen = next.seen
+  save.tutorialSkip = true
+  writeExtract(storage, save)
+  refreshTip()
+})
+document.querySelector('#sellCommon')?.addEventListener('click', () => rememberTip('sell'))
 document.querySelector('#buyBandage')?.addEventListener('click', () => buyFromMerchant('bandage'))
 document.querySelector('#buyP3k')?.addEventListener('click', () => buyFromMerchant('p3k'))
 document.querySelector('#sellCommon')?.addEventListener('click', () => {
@@ -751,6 +778,7 @@ function paintWorkshop(): void {
 function confirmWorkshop(): void {
   if (upgradePick === 'bag') {
     const result = upgradeBag(save)
+    if (result.ok) rememberTip('bagslot')
     upgradePick = null
     document.querySelector<HTMLElement>('#workshopConfirm')!.hidden = true
     paintWorkshop()
@@ -1030,7 +1058,9 @@ function frame(now: number): void {
       else if (tap.claim && !bagFull(save.run)) {
         const target = claimTarget(save.run)
         if (target) claimLoot(save.run, target.id, 'local')
+        rememberTip('take')
       }
+      notePlay(save.run, input)
       tap.attack = false
       tap.dodge = false
       tap.interact = false
@@ -1420,6 +1450,81 @@ function paint(): void {
   }
   const shieldNote = run.shield == null ? t('hud.noShield') : t('hud.shieldNote', { n: run.shield, max: shieldMaxFor(run.shieldLevel ?? 1) })
   document.querySelector('#note')!.textContent = `${hint(run.zone)} ${shieldNote}`
+  refreshTip()
+}
+
+function rememberTip(id: TipId): void {
+  const next = markSeen({ seen: save.tutorialSeen ?? [], skip: save.tutorialSkip === true }, id)
+  save.tutorialSeen = next.seen
+}
+
+function notePlay(run: NonNullable<ExtractSave['run']>, input: { moveX: number; moveY: number; attack: boolean; dodge: boolean; interact: boolean; block: boolean }): void {
+  if (save.tutorialSkip) return
+  if (Math.hypot(input.moveX, input.moveY) > 0.2) rememberTip('move')
+  if (input.attack) rememberTip('sword')
+  if (input.dodge) rememberTip('dodge')
+  if (input.block) rememberTip('block')
+  const prop = usableProp(run)
+  if (input.attack && nearestVein(run)) rememberTip('vein')
+  if (input.interact && prop?.kind === 'barrel') rememberTip('barrel')
+  if (input.interact && prop && prop.kind !== 'barrel' && prop.kind !== 'vendor' && prop.kind !== 'shrine') rememberTip('open')
+  if (run.chart?.props.some((item) => item.kind === 'barrel' && (item.fuse ?? 0) > 0)) rememberTip('barrel')
+  if (run.channel > 0.15) {
+    const room = run.chart ? roomAt(run.chart, run.roomId) : null
+    rememberTip(room?.role === 'fast' ? 'fast' : 'extract')
+  }
+  if (run.hp < HP_MAX * 0.55) rememberTip('death')
+}
+
+function refreshTip(): void {
+  const box = document.querySelector<HTMLElement>('#tip')
+  if (!box) return
+  const run = !outcome ? save.run : null
+  const workshop = document.querySelector<HTMLElement>('#workshop')
+  const room = run?.chart ? roomAt(run.chart, run.roomId) : null
+  const prop = run ? usableProp(run) : null
+  const world: TutorialWorld = run ? {
+    inRun: true,
+    calm: !foeView(run).some((foe) => (foe.heard ?? 0) > 0 || foe.wind > 0 || Math.hypot(foe.x - run.x, foe.y - run.y) < 100),
+    nearVein: nearestVein(run) != null,
+    nearLoot: claimTarget(run) != null,
+    nearOpen: !!prop && prop.kind !== 'barrel' && prop.kind !== 'vendor' && prop.kind !== 'shrine',
+    nearBarrel: prop?.kind === 'barrel' || !!run.chart?.props.some((item) => item.kind === 'barrel' && item.room === run.roomId && (item.fuse ?? 0) > 0),
+    bagFull: bagFull(run) && claimTarget(run) != null,
+    onExtract: inExtract(run),
+    fastRoom: room?.role === 'fast',
+    bossRoom: run.zone === 'sarang' || room?.role === 'boss',
+    lowHp: run.hp < HP_MAX * 0.7,
+    workshopOpen: false,
+  } : {
+    inRun: false,
+    calm: true,
+    nearVein: false,
+    nearLoot: false,
+    nearOpen: false,
+    nearBarrel: false,
+    bagFull: false,
+    onExtract: false,
+    fastRoom: false,
+    bossRoom: false,
+    lowHp: false,
+    workshopOpen: workshop != null && !workshop.hidden,
+  }
+  const id = tipToShow({ seen: save.tutorialSeen ?? [], skip: save.tutorialSkip === true }, world)
+  document.querySelectorAll('.tip-hot').forEach((el) => el.classList.remove('tip-hot'))
+  if (!id) {
+    box.hidden = true
+    delete box.dataset.tip
+    return
+  }
+  box.hidden = false
+  const at = tipAnchor(id)
+  box.dataset.at = at
+  box.dataset.tip = id
+  const text = document.querySelector('#tipText')
+  if (text) text.textContent = t(`tip.${id}` as MsgKey)
+  const target = at === 'stick' ? '#stick' : at === 'attack' ? '#attack' : at === 'dodge' ? '#dodge' : at === 'block' ? '#block' : at === 'claim' ? '#claim' : at === 'open' ? '#open' : at === 'bag' ? '#openBag' : at === 'map' ? '#minimap' : at === 'workshop' ? '#openWorkshop' : at === 'sell' ? '#sellCommon' : ''
+  if (target) document.querySelector(target)?.classList.add('tip-hot')
 }
 
 function hint(zone: ZoneId): string {
@@ -1474,6 +1579,7 @@ function renderBase(): void {
   const totalEl = document.querySelector('#stashTotalNum')
   if (totalEl) totalEl.textContent = t('stash.coins', { n: total })
   paintPurse()
+  refreshTip()
   const bagBtn = document.querySelector<HTMLButtonElement>('#bagUpgrade')
   const nextBag = nextBagUpgrade(save.bagSlots)
   if (bagBtn) {

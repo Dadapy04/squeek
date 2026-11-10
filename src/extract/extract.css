@@ -598,6 +598,16 @@ button.danger { background: #6e2420; color: #fff6f2; border-color: #a14a42; }
   #actions #claim { right: 96px; bottom: 176px; }
   #actions #support { right: 76px; bottom: 136px; }
 }
+#tip { position: fixed; z-index: 8; max-width: 230px; margin: 0; padding: 8px 28px 8px 10px; background: #1c1814; color: #f6ecd8; border: 2px solid #f2c04a; box-shadow: 0 0 0 1px #14110e; pointer-events: auto; }
+#tip[hidden] { display: none; }
+#tip p { margin: 0 0 6px; font-size: 13px; line-height: 1.3; }
+#tipX { position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; min-height: 0; padding: 0; background: transparent; color: #f2c04a; }
+#tipSkip { width: auto; min-height: 28px; padding: 2px 8px; font-size: 11px; background: #2a2118; color: #f0d7a4; }
+#tip[data-at="stick"] { left: 16px; bottom: 108px; }
+#tip[data-at="attack"], #tip[data-at="dodge"], #tip[data-at="block"], #tip[data-at="open"], #tip[data-at="claim"] { right: 16px; bottom: 150px; }
+#tip[data-at="bag"], #tip[data-at="map"] { left: 108px; top: 52px; }
+#tip[data-at="workshop"], #tip[data-at="sell"], #tip[data-at="center"] { left: 50%; top: 72px; transform: translateX(-50%); }
+.tip-hot { outline: 2px solid #f2c04a; outline-offset: 2px; }
 #settings, #overlay { position: absolute; z-index: 6; inset: 0; display: flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 8px; background: rgba(8, 6, 4, 0.55); }
 @media (orientation: landscape) and (max-height: 520px) {
   #overlay .modal-card { width: min(760px, 100%); }

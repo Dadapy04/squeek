@@ -166,6 +166,7 @@
             </div>
             <p class="tip" data-i18n="settings.tip">For a full screen on iPhone: Share → Add to Home Screen.</p>
             <button id="fullToggle" type="button" data-i18n="title.full">Full screen</button>
+            <button id="tutorialReplay" type="button" data-i18n="settings.tutorial">Replay tutorial</button>
             <button id="surrender" class="danger" type="button" data-i18n="settings.giveUp">Give up</button>
           </div>
           <footer class="modal-foot">
@@ -196,6 +197,11 @@
         </div>
       </div>
     </section>
+    <div id="tip" hidden>
+      <p id="tipText"></p>
+      <button id="tipX" type="button" aria-label="Close">✕</button>
+      <button id="tipSkip" type="button" data-i18n="tip.skip">Skip tutorial</button>
+    </div>
     <section id="result" hidden>
       <div id="resultPanel">
         <div id="resultSummary">

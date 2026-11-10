@@ -5,7 +5,8 @@ import { drawHero, drawMaw, drawWing } from './pose.ts'
 import { spearReach, spearRgb } from './spear.ts'
 import { bossDisplay, bossPattern, depthPlan, foeName, lineup, type AttackKind } from './depths.ts'
 import { t } from './i18n.ts'
-import { roomAt, themeFor } from './dungeon.ts'
+import { roomAt } from './dungeon.ts'
+import { drawThemeMotes, paintThemePlate } from './tilesets.ts'
 import { foeCanvas, hasFoeSprite } from './foe-sprites.ts'
 import { blitMotif, interactable, mapLabel, spriteIdFor } from './map-sprites.ts'
 import { BLAST_RADIUS, EXTRACT_ZONE, FOE_SPOTS, NEST_DOOR, SOUL_CAST, SOUL_RADIUS, STAIRS, SWING_REACH, ZONE_H, ZONE_W, claimTarget, depthMods, foeView, isSpecial, lootTitle, nestGap, runCrates, stairsOpen, syncCentipede, swordAim, type Drop, type Foe, type Run } from './sim.ts'
@@ -155,6 +156,7 @@ export function drawExtract(
   drawFloor(ctx, run, scale, at)
   drawMineDressing(ctx, run, scale, at)
   drawDungeonDress(ctx, run, scale, at)
+  drawThemeMotes(ctx, run.depth || 1, run.age, scale, at)
   for (const boom of run.booms ?? []) {
     drawBoomFrame(ctx, at(boom.x, boom.y).x, at(boom.x, boom.y).y, scale, boomFrame(boom.life))
   }
@@ -1222,27 +1224,6 @@ function drawDungeonDress(
   scale: number,
   at: (x: number, y: number) => { x: number; y: number },
 ): void {
-  const paint = themeFor(run.depth || 1)
-  const room = run.chart ? roomAt(run.chart, run.roomId) : null
-  ctx.fillStyle = paint.floor
-  ctx.globalAlpha = 0.42
-  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
-  ctx.globalAlpha = 1
-  const stamp = at(-ZONE_W / 2 + 16, -ZONE_H / 2 + 16)
-  ctx.fillStyle = paint.trim
-  for (let i = 0; i < 5; i += 1) {
-    ctx.fillRect(Math.round(stamp.x + i * 28 * scale), Math.round(stamp.y), Math.max(2, scale * 2), Math.round(10 * scale))
-  }
-  const motes = room?.layout === 'lane' ? 6 : 10
-  for (let i = 0; i < motes; i += 1) {
-    const x = -ZONE_W / 2 + 18 + ((i * 37 + Math.floor(run.age * 8)) % (ZONE_W - 36))
-    const y = -ZONE_H / 2 + 24 + ((i * 53) % (ZONE_H - 48))
-    const p = at(x, y - (run.age * 6 + i * 4) % 20)
-    ctx.fillStyle = paint.mote
-    ctx.globalAlpha = 0.35 + (i % 3) * 0.15
-    ctx.fillRect(Math.round(p.x), Math.round(p.y), Math.max(1, scale), Math.max(1, scale))
-  }
-  ctx.globalAlpha = 1
   for (const vein of run.chart?.veins ?? []) {
     if (vein.hp <= 0 || vein.room !== run.roomId) continue
     const id = spriteIdFor('vein', vein.ore, vein.big)
@@ -1399,13 +1380,12 @@ function clampFocus(focus: number, view: number, span: number): number {
   return Math.max(-limit, Math.min(limit, focus))
 }
 
-function roomPlate(zone: Run['zone'], scale: number): HTMLCanvasElement | null {
+function roomPlate(depth: number, scale: number): HTMLCanvasElement | null {
   if (typeof document === 'undefined') return null
-  const key = `${zone}:${Math.round(scale * 1000)}`
+  const key = `${depth}:${Math.round(scale * 1000)}`
   if (roomCanvas && roomKey === key) return roomCanvas
-  const pad = 1
-  const w = Math.ceil(ZONE_W * scale) + pad * 2 + 2
-  const h = Math.ceil(ZONE_H * scale) + pad * 2 + 2
+  const w = Math.ceil(ZONE_W * scale)
+  const h = Math.ceil(ZONE_H * scale)
   if (!roomCanvas) roomCanvas = document.createElement('canvas')
   if (roomCanvas.width !== w || roomCanvas.height !== h) {
     roomCanvas.width = w
@@ -1415,22 +1395,7 @@ function roomPlate(zone: Run['zone'], scale: number): HTMLCanvasElement | null {
   if (!pen) return null
   pen.imageSmoothingEnabled = false
   pen.clearRect(0, 0, w, h)
-  const leftWorld = -ZONE_W / 2
-  const topWorld = -ZONE_H / 2
-  const local = (x: number, y: number) => ({ x: pad + (x - leftWorld) * scale, y: pad + (y - topWorld) * scale })
-  pen.fillStyle = zone === 'sarang' ? '#2a1c24' : zone === 'pangkalan' ? '#3a2c20' : '#241c16'
-  const origin = local(leftWorld, topWorld)
-  pen.fillRect(Math.floor(origin.x) - 1, Math.floor(origin.y) - 1, Math.ceil(ZONE_W * scale) + 2, Math.ceil(ZONE_H * scale) + 2)
-  const step = 16
-  for (let y = topWorld; y < ZONE_H / 2; y += step) {
-    for (let x = leftWorld; x < ZONE_W / 2; x += step) {
-      const cx = Math.floor(x / step)
-      const cy = Math.floor(y / step)
-      const art = zone === 'pangkalan' ? timberTile(cx, cy) : zone === 'tambang' ? mineTile(cx, cy) : ruinTile(cx, cy)
-      const p = local(x, y)
-      blit(pen, art, p.x, p.y, scale)
-    }
-  }
+  paintThemePlate(pen, depth, scale)
   roomKey = key
   return roomCanvas
 }
@@ -1442,8 +1407,8 @@ function drawFloor(
   at: (x: number, y: number) => { x: number; y: number },
 ): void {
   const left = at(-ZONE_W / 2, -ZONE_H / 2)
-  const plate = roomPlate(run.zone, scale)
-  if (plate) ctx.drawImage(plate, Math.floor(left.x) - 1, Math.floor(left.y) - 1)
+  const plate = roomPlate(run.depth || 1, scale)
+  if (plate) ctx.drawImage(plate, Math.floor(left.x), Math.floor(left.y))
   strokeRoom(ctx, left.x, left.y, ZONE_W * scale, ZONE_H * scale, nestGap(run.zone), at(-NEST_DOOR, 0).x - left.x, at(NEST_DOOR, 0).x - left.x)
 }
 
