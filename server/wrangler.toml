@@ -1,0 +1,21 @@
+name = "squeek-api"
+main = "src/index.ts"
+compatibility_date = "2026-03-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Replace database_id after `wrangler d1 create squeek`.
+# The placeholder lets the file parse. Deploy will fail until it is a real id.
+[[d1_databases]]
+binding = "DB"
+database_name = "squeek"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[vars]
+SIWE_DOMAIN = "dadapy04.github.io"
+SIWE_URI = "https://dadapy04.github.io/squeek"
+# Comma-separated. Local vite is included so a laptop can sign in before Pages is pointed at the worker.
+CORS_ORIGIN = "https://dadapy04.github.io,http://127.0.0.1:47331,http://localhost:47331"
+
+# RUN_SECRET is not here. Set it with `wrangler secret put RUN_SECRET`.
+# Local tests and `wrangler dev` read server/.dev.vars (see .dev.vars.example).

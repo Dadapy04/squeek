@@ -888,7 +888,7 @@ export function unequipSpear(save: ExtractSave): boolean {
   return true
 }
 
-export function deploy(save: ExtractSave, picks: Stack[], bringShield = false): string | null {
+export function deploy(save: ExtractSave, picks: Stack[], bringShield = false, seedOverride?: number): string | null {
   if (save.run) return t('err.runLive')
   const sword = count(picks, 'sword')
   if (sword > 1) return t('err.oneSword')
@@ -921,6 +921,7 @@ export function deploy(save: ExtractSave, picks: Stack[], bringShield = false): 
     carriedBlade.origin = 'stash'
     save.blade = null
   }
+  const seed = seedOverride != null && Number.isFinite(seedOverride) ? Math.max(1, Math.floor(seedOverride)) : save.ventures + 1
   save.run = {
     zone: 'pangkalan',
     x: 0,
@@ -936,7 +937,7 @@ export function deploy(save: ExtractSave, picks: Stack[], bringShield = false): 
     opened: [],
     slain: [],
     drops: [],
-    foes: spawnRoster(1, save.ventures + 1),
+    foes: spawnRoster(1, seed),
     channel: 0,
     attackCd: 0,
     swing: 0,
@@ -951,7 +952,7 @@ export function deploy(save: ExtractSave, picks: Stack[], bringShield = false): 
     floats: [],
     explored: [],
     depth: 1,
-    seed: save.ventures + 1,
+    seed,
     rewards: [],
     found: [],
     spear: carriedSpear,

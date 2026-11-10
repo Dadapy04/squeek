@@ -48,10 +48,19 @@ export function writeExtract(storage: Storage | null, save: ExtractSave): boolea
     storage.setItem(EXTRACT_SAVE_TMP, payload)
     storage.setItem(EXTRACT_SAVE_KEY, payload)
     storage.removeItem(EXTRACT_SAVE_TMP)
+    wroteHook?.()
     return true
   } catch {
     return false
   }
+}
+
+type SaveHook = () => void
+let wroteHook: SaveHook | null = null
+
+/** Fired after a local save lands. Cloud sync listens. Offline play does not need it. */
+export function onSaveWrote(fn: SaveHook): void {
+  wroteHook = fn
 }
 
 function sanitize(value: unknown): ExtractSave {

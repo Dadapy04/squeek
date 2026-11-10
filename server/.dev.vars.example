@@ -1,0 +1,3 @@
+# Copy to .dev.vars for `wrangler dev`. Do not commit .dev.vars.
+# This value is only for your laptop. Production uses `wrangler secret put RUN_SECRET`.
+RUN_SECRET=dev-only-change-me

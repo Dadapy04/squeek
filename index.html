@@ -33,6 +33,23 @@
           <span aria-hidden="true">|</span>
           <button type="button" data-set-lang="en">EN</button>
         </div>
+        <div id="onlineBox" hidden>
+          <p id="onlineStatus"></p>
+          <p class="tip" data-i18n="online.sign">Sign in with a signature. No transaction is sent.</p>
+          <div class="row">
+            <button id="walletInject" type="button" data-i18n="online.connect">Connect wallet</button>
+            <button id="walletWc" type="button" data-i18n="online.walletConnect">WalletConnect</button>
+            <button id="walletOut" type="button" data-i18n="online.disconnect">Disconnect</button>
+          </div>
+          <label class="mix"><span data-i18n="online.nickname">Nickname</span><input id="walletName" maxlength="16" autocomplete="off" /></label>
+          <button id="walletNameSave" type="button" data-i18n="online.saveName">Save name</button>
+          <p id="cloudStatus"></p>
+          <div class="row">
+            <button id="cloudKeep" type="button" hidden data-i18n="online.keep">Keep this device</button>
+            <button id="cloudUse" type="button" hidden data-i18n="online.useCloud">Use cloud copy</button>
+            <button id="openBoard" type="button" data-i18n="online.ranks">Ranks</button>
+          </div>
+        </div>
         <p id="stashTotal" class="stash-total"><span data-i18n="base.stashTotal">Stash value</span> <b id="stashTotalNum">0</b></p>
         <p id="purse" class="purse"><i class="coin" aria-hidden="true"></i><b id="purseNum">0</b><span id="coinPop"></span></p>
         <div id="loadout">
@@ -171,6 +188,7 @@
             <button id="fullToggle" type="button" data-i18n="title.full">Full screen</button>
             <button id="tutorialReplay" type="button" data-i18n="settings.tutorial">Replay tutorial</button>
             <button id="surrender" class="danger" type="button" data-i18n="settings.giveUp">Give up</button>
+            <p id="onlineStatusRun" hidden></p>
           </div>
           <footer class="modal-foot">
             <button id="settingsClose" type="button" data-i18n="shop.close">Close</button>
@@ -200,6 +218,23 @@
         </div>
       </div>
     </section>
+    <div id="board" hidden>
+      <div class="modal-card">
+        <header class="modal-head">
+          <p data-i18n="online.ranks">Ranks</p>
+          <button id="boardClose" class="modal-x" type="button" data-i18n-aria="shop.close" aria-label="Close">✕</button>
+        </header>
+        <div class="modal-body">
+          <div class="row">
+            <button id="boardValue" type="button" data-i18n="online.best">Best haul</button>
+            <button id="boardDepth" type="button" data-i18n="online.deep">Deepest floor</button>
+            <button id="boardWeek" type="button" data-i18n="online.week">This week</button>
+            <button id="boardAll" type="button" data-i18n="online.all">All time</button>
+          </div>
+          <ol id="boardList"></ol>
+        </div>
+      </div>
+    </div>
     <div id="tip" hidden>
       <p id="tipText"></p>
       <button id="tipX" type="button" aria-label="Close">✕</button>

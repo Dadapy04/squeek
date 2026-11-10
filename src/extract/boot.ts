@@ -17,6 +17,8 @@ import { loadExtract, writeExtract } from './save.ts'
 import { ITEM_NAME, RARITY_COLOR, RARITY_NAME, STASH_SLOTS, type CoinRarity, type ItemUnit } from './coins.ts'
 import { bladeDisplay, bossDisplay, depthPlan } from './depths.ts'
 import { currentLocale, onLocale, setLocale, t, type MsgKey } from './i18n.ts'
+import { mountOnline, noteExtract, refreshOnline, takeRunSeed } from './online.ts'
+import { reportFromRun } from './run-report.ts'
 import { roomAt } from './dungeon.ts'
 import { markSeen, replayTutorial, skipTutorial, tipAnchor, tipToShow, type TipId, type TutorialWorld } from './tutorial.ts'
 import { bagSlotsOf, needsSellConfirm, nextBagUpgrade, shieldMaxFor, swordDamage, swordReadout } from './economy.ts'
@@ -182,9 +184,11 @@ document.querySelector<HTMLButtonElement>('#titleFull')!.addEventListener('point
   requestStageFullscreen()
 })
 
-deployBtn.addEventListener('click', () => {
+deployBtn.addEventListener('click', () => { void beginDeploy() })
+async function beginDeploy(): Promise<void> {
   requestStageFullscreen()
-  const error = deploy(save, picks.map((stack) => ({ ...stack })), bringShield)
+  const seed = await takeRunSeed()
+  const error = deploy(save, picks.map((stack) => ({ ...stack })), bringShield, seed)
   if (error) {
     deployError.hidden = false
     deployError.textContent = error
@@ -195,7 +199,7 @@ deployBtn.addEventListener('click', () => {
   outcome = null
   writeExtract(storage, save)
   show('field')
-})
+}
 
 document.querySelector<HTMLButtonElement>('#resume')!.addEventListener('click', () => {
   if (!save.run) return
@@ -1247,6 +1251,17 @@ onLocale(() => {
 })
 applyDom()
 show(outcome ? 'result' : save.run ? 'field' : 'base')
+mountOnline({
+  getSave: () => save,
+  setSave: (next) => {
+    save = next
+    writeExtract(storage, save)
+    outcome = null
+    renderBase()
+    show(save.run ? 'field' : 'base')
+  },
+  storage,
+})
 requestAnimationFrame(frame)
 
 function rowName(row: ResultRow): string {
@@ -1289,12 +1304,14 @@ function carriedRows(run: NonNullable<ExtractSave['run']>): ResultRow[] {
 function finish(kind: 'extracted' | 'dead'): void {
   const carried = save.run ? carriedRows(save.run) : []
   const gained = save.run ? freshValue(save.run) : 0
+  const report = kind === 'extracted' && save.run ? reportFromRun(save.run) : null
   if (kind === 'extracted') bankRun(save)
   else killRun(save)
   outcome = kind
   lastResult = { kind, rows: carried, gained }
   writeExtract(storage, save)
   paintResult(kind, carried, gained)
+  if (report) void noteExtract(report)
 }
 
 function paintResult(kind: 'extracted' | 'dead', carried: ResultRow[], gained: number): void {
@@ -1727,6 +1744,7 @@ function renderBase(): void {
   if (totalEl) totalEl.textContent = t('stash.coins', { n: total })
   paintPurse()
   refreshTip()
+  refreshOnline()
   const bagBtn = document.querySelector<HTMLButtonElement>('#bagUpgrade')
   const nextBag = nextBagUpgrade(save.bagSlots)
   if (bagBtn) {
