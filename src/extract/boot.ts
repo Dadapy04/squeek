@@ -1731,7 +1731,8 @@ function paint(): void {
 }
 
 function rememberTip(id: TipId): void {
-  const next = markSeen({ seen: save.tutorialSeen ?? [], skip: save.tutorialSkip === true }, id)
+  if (save.tutorialSkip || (save.tutorialSeen ?? []).includes(id)) return
+  const next = markSeen({ seen: save.tutorialSeen ?? [], skip: false }, id)
   save.tutorialSeen = next.seen
   if (walletLive()) void walletAct('/v1/act/tutorial-seen', { id }, !save.run)
 }
