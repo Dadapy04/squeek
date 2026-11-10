@@ -1,5 +1,5 @@
 import { ALTERS, RETIRE_BLOBS, SCHEMA } from './schema.ts'
-import { applyDeath, applyExtract, buyMerchant, fieldBuy, freshAccount, mendShield, replayTutorialAccount, seeTip, sellCommon, sellUnit, skipTutorial, startRun, undoRun, upgradeBag, upgradeWeapon, type Account, type LootRow, type Pick } from '../../shared/account.ts'
+import { applyDeath, applyExtract, buyMerchant, fieldBuy, freshAccount, mendShield, replayTutorialAccount, seeTip, sellCommon, sellUnit, settleOneWeapon, skipTutorial, startRun, undoRun, upgradeBag, upgradeWeapon, type Account, type LootRow, type Pick } from '../../shared/account.ts'
 import { checksumAddress, isAddress, normAddress, randomNonce, readMessageAddress, readNonce, recoverAddress, siweMessage, uriAllowed } from './siwe.ts'
 import { judgeRun, MIN_SECONDS, weekKey, type RunEvent } from './rules.ts'
 
@@ -335,7 +335,12 @@ async function loadAccount(env: Env, address: string, now: number): Promise<{ ac
     await env.DB.prepare('INSERT INTO accounts (address, state, revision, updated_at) VALUES (?, ?, 1, ?)').bind(address, JSON.stringify(account), now).run()
     return { account, revision: 1 }
   }
-  return { account: JSON.parse(row.state) as Account, revision: row.revision }
+  const account = JSON.parse(row.state) as Account
+  if (settleOneWeapon(account)) {
+    const revision = await storeAccount(env, address, account, now)
+    return { account, revision }
+  }
+  return { account, revision: row.revision }
 }
 
 async function storeAccount(env: Env, address: string, account: Account, now: number): Promise<number> {

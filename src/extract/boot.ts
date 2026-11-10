@@ -37,7 +37,6 @@ import {
   STAM_MAX,
   addSupport,
   addUnits,
-  armFoundSpear,
   bankRun,
   carriedCount,
   claimLoot,
@@ -75,7 +74,6 @@ import {
   localValue,
   spendSupport,
   step,
-  stowSpear,
   unequipSpear,
   PROP_REACH,
   usableProp,
@@ -197,6 +195,7 @@ async function beginDeploy(): Promise<void> {
   }
   deployBtn.disabled = true
   requestStageFullscreen()
+  if (!save.spear && !save.blade && count(picks, 'sword') === 0 && count(save.stash, 'sword') > 0) takePick('sword')
   if (save.run) {
     const error = deploy(save, picks.map((stack) => ({ ...stack })), bringShield)
     deployBtn.disabled = false
@@ -462,17 +461,7 @@ document.querySelector('#workshopClose')!.addEventListener('click', () => closeW
 document.querySelector('#workshopNo')!.addEventListener('click', () => cancelWorkshop())
 document.querySelector('#workshopYes')!.addEventListener('click', () => confirmWorkshop())
 bindPress('#openHome', () => openPanel('home.panelTitle', 'home.panelBody'))
-bindPress('#slotSword', () => {
-  if (save.run) stowSpear(save.run)
-})
-bindPress('#slotShield', () => undefined)
-bindPress('#slotSoon', () => {
-  const run = save.run
-  if (!run) return
-  const waiting = run.found?.[0]
-  if (waiting) armFoundSpear(run, waiting.id)
-  else stowSpear(run)
-})
+for (const id of ['#slotSword', '#slotShield', '#slotSoon']) bindPress(id, () => undefined)
 function closeOverlay(): void {
   panelCopy = null
   document.querySelector<HTMLElement>('#overlay')!.hidden = true
@@ -736,9 +725,8 @@ function fillBagDetail(run: NonNullable<ExtractSave['run']>, detail: HTMLElement
   text.innerHTML = `<b>${full}</b><br><span style="color:${color}">${tier}</span> ×${n}.${home}<br>${extra}`
   drop1.hidden = false
   dropAll.hidden = n < 2
-  const equipSpearPick = spear != null
-  use.hidden = !equipSpearPick && pick.kind !== 'bandage' && pick.kind !== 'tonic' && pick.kind !== 'p3k'
-  use.textContent = equipSpearPick ? t('bag.equip') : t('bag.use')
+  use.hidden = pick.kind !== 'bandage' && pick.kind !== 'tonic' && pick.kind !== 'p3k'
+  use.textContent = t('bag.use')
   const row = detail.querySelector('.row')
   let insure = detail.querySelector<HTMLButtonElement>('#bagInsure')
   if (!insure && row) {
@@ -809,12 +797,6 @@ function dropBag(n: number): void {
 function useBag(): void {
   const run = save.run
   if (!run || !bagPick) return
-  if (bagPick.spearId) {
-    if (!armFoundSpear(run, bagPick.spearId)) return
-    bagPick = { kind: 'tombak', spearId: bagPick.spearId, worn: true }
-    paintBag()
-    return
-  }
   if (bagPick.kind !== 'bandage' && bagPick.kind !== 'tonic' && bagPick.kind !== 'p3k') return
   if (!useItem(run, bagPick.kind)) return
   if (count(run.bag, bagPick.kind) <= 0) bagPick = null
@@ -1755,23 +1737,12 @@ function paint(): void {
   swordSlot.classList.toggle('on', run.sword || run.spear != null)
   document.querySelector<HTMLButtonElement>('#slotShield')!.dataset.kind = 'shield'
   const soon = document.querySelector<HTMLButtonElement>('#slotSoon')!
-  const waiting = (run.found ?? [])[0]
-  if (waiting || (run.spear && run.sword)) {
-    const show = waiting ?? run.spear!
-    soon.disabled = false
-    soon.classList.remove('locked')
-    soon.classList.toggle('on', waiting == null)
-    soon.dataset.kind = 'tombak'
-    soon.dataset.rarity = show.rarity
-    soon.textContent = t('hud.spear')
-  } else {
-    soon.disabled = true
-    soon.classList.add('locked')
-    soon.classList.remove('on')
-    soon.dataset.kind = 'soon'
-    delete soon.dataset.rarity
-    soon.textContent = t('hud.soon')
-  }
+  soon.disabled = true
+  soon.classList.add('locked')
+  soon.classList.remove('on')
+  soon.dataset.kind = 'soon'
+  delete soon.dataset.rarity
+  soon.textContent = t('hud.soon')
   const shieldSlot = document.querySelector<HTMLButtonElement>('#slotShield')!
   if (run.shield == null) {
     shieldSlot.textContent = t('item.shield')
@@ -1900,7 +1871,12 @@ function paintBladeRack(): void {
     const button = document.createElement('button')
     button.type = 'button'
     button.textContent = t('stash.equipBlade', { name: bladeDisplay(blade.id, blade.name), dmg: blade.damage })
-    button.addEventListener('click', () => { equipBlade(save, blade.id); writeExtract(storage, save); renderBase() })
+    button.addEventListener('click', () => {
+      picks = picks.filter((stack) => stack.kind !== 'sword')
+      equipBlade(save, blade.id)
+      writeExtract(storage, save)
+      renderBase()
+    })
     rack.append(button)
   }
 }
@@ -2038,7 +2014,13 @@ function stashDetail(): HTMLElement {
     button.type = 'button'
     button.className = 'primary'
     button.textContent = t('stash.equip')
-    button.addEventListener('click', () => { equipSpear(save, spear.id); writeExtract(storage, save); stashFocus = null; renderBase() })
+    button.addEventListener('click', () => {
+      picks = picks.filter((stack) => stack.kind !== 'sword')
+      equipSpear(save, spear.id)
+      writeExtract(storage, save)
+      stashFocus = null
+      renderBase()
+    })
     box.append(button, sellButtons(box, 'tombak', spear.coins, spear.id, spear.rarity), insureStashButton('tombak', spear.coins, spear.id))
     return box
   }
@@ -2157,6 +2139,10 @@ function paintPurse(): void {
 }
 
 function takePick(kind: ItemKind): void {
+  if (kind === 'sword') {
+    if (save.spear) unequipSpear(save)
+    if (save.blade) unequipBlade(save)
+  }
   if (count(save.stash, kind) - count(picks, kind) <= 0) return
   if (kind === 'sword' && count(picks, 'sword') >= 1) return
   const carried = picks.filter((stack) => stack.kind !== 'sword').reduce((sum, stack) => sum + stack.n, 0)

@@ -99,6 +99,40 @@ export function rarityFor(coins: number): ItemUnit['rarity'] {
   return 'biasa'
 }
 
+function refundSword(account: Account): void {
+  const stack = account.stash.find((item) => item.kind === 'sword')
+  if (stack) stack.n += 1
+  else account.stash.push({ kind: 'sword', n: 1 })
+}
+
+/** One weapon on a delve. A found spear is loot, never the carried weapon. */
+export function settleOneWeapon(account: Account): boolean {
+  let changed = false
+  if (account.spear && account.blade) {
+    account.blades.push(account.blade)
+    account.blade = null
+    changed = true
+  }
+  const run = account.activeRun
+  if (!run) return changed
+  if (run.spear && run.spear.origin === 'loot') {
+    account.spears.push({ ...run.spear, origin: 'stash' })
+    run.spear = null
+    changed = true
+  }
+  if (run.spear && run.blade) {
+    account.blades.push({ ...run.blade, origin: 'stash' })
+    run.blade = null
+    changed = true
+  }
+  if ((run.spear || run.blade) && run.sword) {
+    run.sword = false
+    refundSword(account)
+    changed = true
+  }
+  return changed
+}
+
 export function freshAccount(): Account {
   return {
     coins: 0,
@@ -299,7 +333,8 @@ export function startRun(account: Account, picks: Pick[], bringShield: boolean, 
   if (account.activeRun) return { ok: false, reason: 'run-live' }
   const sword = picks.find((pick) => pick.kind === 'sword')?.n ?? 0
   if (sword > 1) return { ok: false, reason: 'sword' }
-  if (account.spear && sword > 0) return { ok: false, reason: 'spear-on' }
+  settleOneWeapon(account)
+  if ((account.spear || account.blade) && sword > 0) return { ok: false, reason: 'spear-on' }
   if (bringShield && (account.shield == null || account.shield <= 0)) return { ok: false, reason: 'no-shield' }
   const carriedSlots = picks.filter((pick) => pick.kind !== 'sword').reduce((sum, pick) => sum + pick.n, 0)
   if (carriedSlots + (account.insured ? 1 : 0) > bagSlotsOf(account.bagSlots)) return { ok: false, reason: 'bag' }

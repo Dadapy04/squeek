@@ -21,17 +21,17 @@ import {
 } from '../src/extract/spear.ts'
 import {
   bankRun,
-  armFoundSpear,
   claimLoot,
   deploy,
   equipSpear,
-  stowSpear,
   freshSave,
   killRun,
+  migrateOneWeapon,
   step,
   unequipSpear,
   type Input,
 } from '../src/extract/sim.ts'
+import { freshAccount, settleOneWeapon } from '../shared/account.ts'
 
 const still: Input = { moveX: 0, moveY: 0, attack: false, dodge: false, interact: false, block: false, use: null }
 
@@ -73,36 +73,62 @@ describe('spear reward', () => {
     expect(critLands({ ...crit, perks: ['reach'] }, 0)).toBe(false)
   })
 
-  it('equips a found spear for this delve without changing its thrust, then banks it', () => {
+  it('keeps a found spear as loot until extract, then one weapon is chosen at base', () => {
     const save = freshSave()
     deploy(save, [{ kind: 'sword', n: 1 }])
     const run = save.run!
     const spear = rollSpear(11)
-    const power = spearPower(spear)
     run.drops.push({ id: 'arm-prize', kind: 'tombak', x: run.x, y: run.y, spear })
     expect(claimLoot(run, 'arm-prize', 'local')).toBe('ok')
     expect(run.spear).toBeNull()
-    expect(armFoundSpear(run, spear.id)).toBe(true)
-    expect(run.spear?.id).toBe(spear.id)
-    expect(run.found).toEqual([])
-    expect(spearPower(run.spear!)).toBe(power)
     expect(run.sword).toBe(true)
-    expect(stowSpear(run)).toBe(true)
-    expect(run.spear).toBeNull()
     expect(run.found.map((item) => item.id)).toEqual([spear.id])
-    expect(armFoundSpear(run)).toBe(true)
     run.channel = 3
     expect(bankRun(save)).toBe(true)
-    expect(save.spear?.id).toBe(spear.id)
+    expect(save.spear).toBeNull()
+    expect(save.spears.map((item) => item.id)).toEqual([spear.id])
+    expect(equipSpear(save, spear.id)).toBe(true)
+    expect(deploy(save, [{ kind: 'sword', n: 1 }])).toMatch(/Tombak/)
+    expect(deploy(save, [])).toBeNull()
+    expect(save.run!.spear?.id).toBe(spear.id)
+    expect(save.run!.sword).toBe(false)
+    killRun(save)
+    expect(save.spear).toBeNull()
     expect(save.spears).toEqual([])
-    const doomed = freshSave()
-    deploy(doomed, [{ kind: 'sword', n: 1 }])
-    const lost = rollSpear(12)
-    doomed.run!.found.push(lost)
-    armFoundSpear(doomed.run!, lost.id)
-    killRun(doomed)
-    expect(doomed.spear).toBeNull()
-    expect(doomed.spears).toEqual([])
+    expect(save.stash.some((stack) => stack.kind === 'sword')).toBe(true)
+  })
+
+  it('migrates a delve that was carrying both weapons down to one', () => {
+    const save = freshSave()
+    deploy(save, [{ kind: 'sword', n: 1 }])
+    const found = rollSpear(4)
+    found.origin = 'loot'
+    save.run!.spear = found
+    migrateOneWeapon(save)
+    expect(save.run!.spear).toBeNull()
+    expect(save.run!.sword).toBe(true)
+    expect(save.run!.found.map((item) => item.id)).toEqual([found.id])
+
+    const brought = freshSave()
+    const spear = rollSpear(5)
+    spear.origin = 'stash'
+    brought.spear = spear
+    deploy(brought, [])
+    brought.run!.sword = true
+    const before = brought.stash.filter((stack) => stack.kind === 'sword').reduce((sum, stack) => sum + stack.n, 0)
+    migrateOneWeapon(brought)
+    expect(brought.run!.spear?.id).toBe(spear.id)
+    expect(brought.run!.sword).toBe(false)
+    const after = brought.stash.filter((stack) => stack.kind === 'sword').reduce((sum, stack) => sum + stack.n, 0)
+    expect(after).toBe(before + 1)
+
+    const account = freshAccount()
+    account.blade = { id: 'edge', name: 'Edge', damage: 36, rarity: 'pusaka', coins: 42, origin: 'stash', depth: 1 }
+    account.spear = { id: 'both', rarity: 'langka', perks: ['reach'], coins: 20, origin: 'stash' }
+    expect(settleOneWeapon(account)).toBe(true)
+    expect(account.spear?.id).toBe('both')
+    expect(account.blade).toBeNull()
+    expect(account.blades.map((item) => item.id)).toEqual(['edge'])
   })
 
   it('keeps a found spear in the rack until it is equipped at base', () => {

@@ -4,7 +4,7 @@ import { asSpear, rollSpear, type Spear } from './spear.ts'
 import { mintUnit, readUnit, type ItemUnit } from './coins.ts'
 import { bagSlotsOf, clampLevel, shieldMaxFor } from './economy.ts'
 import { normalizeTutorial } from './tutorial.ts'
-import { ensureChart, HP_MAX, HP_OLD, SHIELD_MAX, freshSave, scheduleSoul, spawnRoster, type Crate, type Drop, type ExtractSave, type Foe, type Insured, type ItemKind, type Run, type SoulRite, type Stack, type ZoneId } from './sim.ts'
+import { ensureChart, HP_MAX, HP_OLD, SHIELD_MAX, freshSave, migrateOneWeapon, scheduleSoul, spawnRoster, type Crate, type Drop, type ExtractSave, type Foe, type Insured, type ItemKind, type Run, type SoulRite, type Stack, type ZoneId } from './sim.ts'
 
 export const EXTRACT_SAVE_KEY = 'npcs-burrow-pixel-extract.save.v1'
 const EXTRACT_SAVE_TMP = `${EXTRACT_SAVE_KEY}.tmp`
@@ -112,6 +112,7 @@ function sanitize(value: unknown): ExtractSave {
     save.run.bag = liftTombak(save.run.bag, lifted, 11)
     save.run.found = [...save.run.found, ...lifted]
   }
+  migrateOneWeapon(save)
   return save
 }
 

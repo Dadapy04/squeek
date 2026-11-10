@@ -847,24 +847,40 @@ function pullUnits(list: Stack[], kind: ItemKind, n: number): ItemUnit[] {
   return taken.map((unit) => ({ ...unit, origin: 'stash' as const }))
 }
 
-/** Equip a spear picked up this delve. Same thrust as a spear brought from base. */
-export function armFoundSpear(run: Run, id?: string): boolean {
-  const list = run.found ?? []
-  const spear = (id ? list.find((item) => item.id === id) : list[0]) ?? null
-  if (!spear) return false
-  const rest = list.filter((item) => item.id !== spear.id)
-  if (run.spear && run.spear.id !== spear.id) rest.push(run.spear)
-  run.found = rest
-  run.spear = spear
-  return true
+function refundSword(save: ExtractSave): void {
+  const stack = save.stash.find((item) => item.kind === 'sword')
+  if (stack) stack.n += 1
+  else save.stash.push({ kind: 'sword', n: 1 })
 }
 
-/** Put the thrust away and bring the sword back. A spear-only loadout stays armed. */
-export function stowSpear(run: Run): boolean {
-  if (!run.spear || !run.sword) return false
-  run.found = [...(run.found ?? []), run.spear]
-  run.spear = null
-  return true
+/** One carried weapon. A spear found this delve stays in the bag until extract. */
+export function migrateOneWeapon(save: ExtractSave): void {
+  if (save.spear && save.blade) {
+    save.blades.push(save.blade)
+    save.blade = null
+  }
+  const run = save.run
+  if (!run) return
+  if (run.spear && run.spear.origin === 'loot') {
+    run.found = [...(run.found ?? []), run.spear]
+    run.spear = null
+  }
+  if (run.spear && run.blade) {
+    save.blades.push(run.blade)
+    run.blade = null
+  }
+  if (run.blade && run.sword) {
+    run.sword = false
+    refundSword(save)
+  }
+  if (run.spear && run.sword) {
+    run.sword = false
+    refundSword(save)
+  }
+  if (!run.spear && !run.blade && !run.sword) {
+    if (count(save.stash, 'sword') > 0) take(save.stash, 'sword', 1)
+    run.sword = true
+  }
 }
 
 export function equipSpear(save: ExtractSave, id: string): boolean {
