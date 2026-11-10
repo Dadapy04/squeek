@@ -14,6 +14,13 @@ export function walletConnectId(raw = import.meta.env.VITE_WALLETCONNECT_PROJECT
   return id
 }
 
+/** A landscape phone is short and not very wide. A desktop window is taller. */
+export function phoneLayout(input: { width: number; height: number; coarse: boolean; ua: string }): boolean {
+  if (/iPhone|iPad|iPod|Android/i.test(input.ua)) return true
+  if (input.coarse && input.width < 1100) return true
+  return input.width <= 900 && input.height <= 520
+}
+
 /** Phones with no injected wallet get a coming-soon note. Desktop still offers Connect wallet. */
 export function walletOffer(input: { injected: boolean; mobile: boolean }): 'connect' | 'soon' {
   if (input.mobile && !input.injected) return 'soon'

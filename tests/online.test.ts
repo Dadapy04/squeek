@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { onlineEnabled, walletOffer } from '../src/extract/online-flag.ts'
+import { onlineEnabled, phoneLayout, walletOffer } from '../src/extract/online-flag.ts'
 import { reportFromRun } from '../src/extract/run-report.ts'
 import { decideSync, hasLocalProgress } from '../src/extract/sync-choice.ts'
 import { deploy, freshSave, freshValue } from '../src/extract/sim.ts'
@@ -13,6 +13,9 @@ describe('online flag and cloud choice', () => {
     expect(walletOffer({ injected: false, mobile: true })).toBe('soon')
     expect(walletOffer({ injected: true, mobile: true })).toBe('connect')
     expect(walletOffer({ injected: false, mobile: false })).toBe('connect')
+    expect(phoneLayout({ width: 844, height: 390, coarse: false, ua: 'Mozilla/5.0' })).toBe(true)
+    expect(phoneLayout({ width: 1280, height: 800, coarse: false, ua: 'Mozilla/5.0' })).toBe(false)
+    expect(phoneLayout({ width: 1280, height: 800, coarse: false, ua: 'Mozilla/5.0 (iPhone)' })).toBe(true)
   })
 
   it('never downloads over a dirty local save', () => {

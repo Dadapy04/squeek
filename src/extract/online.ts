@@ -1,4 +1,4 @@
-import { apiUrl, onlineEnabled, walletConnectId, walletOffer } from './online-flag.ts'
+import { apiUrl, onlineEnabled, phoneLayout, walletConnectId, walletOffer } from './online-flag.ts'
 import type { RunReport } from './run-report.ts'
 import { EXTRACT_SAVE_KEY, loadExtract, onSaveWrote } from './save.ts'
 import { decideSync, hasLocalProgress } from './sync-choice.ts'
@@ -209,9 +209,12 @@ function injected(): Eip1193 | null {
 }
 
 function phoneLike(): boolean {
-  const coarse = window.matchMedia('(pointer: coarse)').matches
-  const ua = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-  return coarse || ua || (navigator.maxTouchPoints > 1 && window.innerWidth < 1000)
+  return phoneLayout({
+    width: window.innerWidth,
+    height: window.innerHeight,
+    coarse: window.matchMedia('(pointer: coarse)').matches,
+    ua: navigator.userAgent,
+  })
 }
 
 function show(id: string, on: boolean): void {
@@ -333,12 +336,10 @@ async function loadBoard(): Promise<void> {
     list.append(empty)
     return
   }
-  body.rows.forEach((row, index) => {
+  body.rows.forEach((row) => {
     const item = document.createElement('li')
     const who = row.name || shortAddress(row.address)
-    item.textContent = metric === 'depth'
-      ? `${index + 1}. ${who} · ${row.depth}`
-      : `${index + 1}. ${who} · ${row.value}`
+    item.textContent = metric === 'depth' ? `${who} · ${row.depth}` : `${who} · ${row.value}`
     list.append(item)
   })
 }
