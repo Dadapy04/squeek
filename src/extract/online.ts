@@ -1,4 +1,4 @@
-import { apiUrl, onlineEnabled, walletConnectId } from './online-flag.ts'
+import { apiUrl, onlineEnabled, walletConnectId, walletOffer } from './online-flag.ts'
 import type { RunReport } from './run-report.ts'
 import { EXTRACT_SAVE_KEY, loadExtract, onSaveWrote } from './save.ts'
 import { decideSync, hasLocalProgress } from './sync-choice.ts'
@@ -96,6 +96,7 @@ export function refreshOnline(): void {
     setText('onlineStatusRun', t('online.guest'))
     setText('cloudStatus', t('online.device'))
     showConflict(false)
+    paintWalletChrome()
     return
   }
   const label = session.name || shortAddress(session.address)
@@ -105,6 +106,7 @@ export function refreshOnline(): void {
   else if (meta?.dirty) setText('cloudStatus', t('online.device'))
   else setText('cloudStatus', t('online.synced'))
   showConflict(pending != null)
+  paintWalletChrome()
 }
 
 async function api(path: string, init: RequestInit = {}, auth = true): Promise<Response> {
@@ -206,6 +208,29 @@ function injected(): Eip1193 | null {
   return eth?.request ? eth : null
 }
 
+function phoneLike(): boolean {
+  const coarse = window.matchMedia('(pointer: coarse)').matches
+  const ua = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+  return coarse || ua || (navigator.maxTouchPoints > 1 && window.innerWidth < 1000)
+}
+
+function show(id: string, on: boolean): void {
+  const el = document.getElementById(id)
+  if (el) el.hidden = !on
+}
+
+function paintWalletChrome(): void {
+  const session = hooks ? readSession(hooks.storage) : null
+  const soon = walletOffer({ injected: injected() != null, mobile: phoneLike() }) === 'soon' && !session
+  show('onlineSoon', soon)
+  show('onlineSign', !soon)
+  show('walletInject', !soon)
+  show('walletWc', !soon && walletConnectId() !== '')
+  show('walletNameLabel', !soon)
+  show('walletNameSave', !soon)
+  show('walletOut', !soon)
+}
+
 async function signIn(provider: Eip1193): Promise<void> {
   if (!hooks) return
   const accounts = await provider.request({ method: 'eth_requestAccounts' }) as string[]
@@ -228,7 +253,7 @@ async function signIn(provider: Eip1193): Promise<void> {
 async function connectInjected(): Promise<void> {
   const provider = injected()
   if (!provider) {
-    setText('cloudStatus', t('online.wcMissing'))
+    setText('cloudStatus', t('online.noWallet'))
     return
   }
   try {

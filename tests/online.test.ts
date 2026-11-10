@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { onlineEnabled } from '../src/extract/online-flag.ts'
+import { onlineEnabled, walletOffer } from '../src/extract/online-flag.ts'
 import { reportFromRun } from '../src/extract/run-report.ts'
 import { decideSync, hasLocalProgress } from '../src/extract/sync-choice.ts'
 import { deploy, freshSave, freshValue } from '../src/extract/sim.ts'
@@ -9,6 +9,10 @@ describe('online flag and cloud choice', () => {
     expect(onlineEnabled('')).toBe(false)
     expect(onlineEnabled('   ')).toBe(false)
     expect(onlineEnabled('https://squeek.example')).toBe(true)
+    expect(walletOffer({ injected: true, mobile: false })).toBe('connect')
+    expect(walletOffer({ injected: false, mobile: true })).toBe('soon')
+    expect(walletOffer({ injected: true, mobile: true })).toBe('connect')
+    expect(walletOffer({ injected: false, mobile: false })).toBe('connect')
   })
 
   it('never downloads over a dirty local save', () => {

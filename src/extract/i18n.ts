@@ -124,6 +124,8 @@ export const DICT = {
   'online.disconnect': { id: 'Putuskan', en: 'Disconnect' },
   'online.walletConnect': { id: 'WalletConnect', en: 'WalletConnect' },
   'online.sign': { id: 'Masuk dengan tanda tangan. Tidak ada transaksi.', en: 'Sign in with a signature. No transaction is sent.' },
+  'online.soon': { id: 'Login wallet di HP segera hadir', en: 'Mobile wallet login coming soon' },
+  'online.noWallet': { id: 'Tidak ada dompet di peramban ini.', en: 'No wallet in this browser.' },
   'online.guest': { id: 'Tamu', en: 'Guest' },
   'online.who': { id: 'Dompet {name}', en: 'Wallet {name}' },
   'online.ranks': { id: 'Papan peringkat', en: 'Ranks' },

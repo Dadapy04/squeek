@@ -122,7 +122,7 @@ VITE_WALLETCONNECT_PROJECT_ID=
 
 Put the WalletConnect id on the second line if you have one. No quotes. No slash at the end of the API address.
 
-This file is not committed. The GitHub Pages build does not include it, so the public site stays offline-only until you publish a build that was made with these variables set.
+`.env.local` is not committed. The public site build reads the committed `.env.production`, which sets `VITE_API_URL` to `https://squeek-api.dadapy04.workers.dev`. WalletConnect stays unset there, so a phone with no injected wallet shows “Mobile wallet login coming soon” and guest play still works.
 
 To try it on your laptop:
 
@@ -133,14 +133,9 @@ npm run dev
 
 Open http://127.0.0.1:47331 . On the base screen you should see Connect wallet. Play still works if you never connect.
 
-## 9. Publish that build to GitHub Pages (only when you want the public site online)
+## 9. Publish a Pages build
 
-The normal Pages site is built without `VITE_API_URL`, so visitors do not see the wallet. When you are ready for everyone to connect:
-
-1. Build on a machine that has the `.env.local` from step 8: `npm run build`
-2. Publish the `dist` folder to the `gh-pages` branch the same way earlier updates were published (an empty `.nojekyll` file next to `index.html`).
-
-Until that build is published, the live site keeps working exactly as it does now.
+`npm run build` in the game folder picks up `.env.production`, so the public bundle already knows the Worker URL. Publish `dist` plus an empty `.nojekyll` to the `gh-pages` branch. A phone still cannot connect until a WalletConnect project id is added to that file and the site is built again.
 
 ## What the player can do
 

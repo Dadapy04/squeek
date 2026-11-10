@@ -14,6 +14,7 @@ server/.dev.vars
 .env
 .env.*
 !.env.example
+!.env.production
 artifacts
 dist-ssr
 *.local

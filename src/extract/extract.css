@@ -624,6 +624,7 @@ button.danger { background: #6e2420; color: #fff6f2; border-color: #a14a42; }
 #board .modal-card { width: min(420px, 100%); }
 #boardList { margin: 8px 0 0; padding-left: 18px; line-height: 1.4; }
 #onlineBox { margin: 8px 0; padding: 8px; border: 2px solid #3a2c20; border-radius: 8px; }
+#onlineSoon { color: #f0d7a4; }
 #onlineBox .row { flex-wrap: wrap; }
 #settings .modal-body { display: flex; flex-direction: column; gap: 8px; }
 #settings button, #settings p { width: 200px; }

@@ -13,3 +13,9 @@ export function walletConnectId(raw = import.meta.env.VITE_WALLETCONNECT_PROJECT
   if (!id || id === 'REPLACE_ME') return ''
   return id
 }
+
+/** Phones with no injected wallet get a coming-soon note. Desktop still offers Connect wallet. */
+export function walletOffer(input: { injected: boolean; mobile: boolean }): 'connect' | 'soon' {
+  if (input.mobile && !input.injected) return 'soon'
+  return 'connect'
+}
