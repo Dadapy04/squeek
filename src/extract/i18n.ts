@@ -310,6 +310,7 @@ export const DICT = {
   'err.insureRun': { id: 'Saat galian, pilih dari tas.', en: 'During a delve, pick from the bag.' },
   'err.notInStash': { id: 'Tidak ada di simpanan.', en: 'Not in the stash.' },
   'err.stashFull': { id: 'Simpanan penuh. Kosongkan satu slot dulu.', en: 'Stash full. Clear a slot first.' },
+  'result.leftBehind': { id: 'Simpanan penuh (20/20). {n} barang tertinggal.', en: 'Stash full (20/20). {n} items left behind.' },
   'err.runLive': { id: 'Masih ada galian yang belum selesai.', en: 'A delve is still unfinished.' },
   'err.oneSword': { id: 'Cukup satu pedang.', en: 'One sword is enough.' },
   'err.spearOn': { id: 'Tombak terpasang. Lepas dulu kalau mau pedang.', en: 'A spear is equipped. Unequip it if you want the sword.' },

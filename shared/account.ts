@@ -462,32 +462,44 @@ export function undoRun(account: Account): void {
   account.activeRun = null
 }
 
-/** Items taken from the stash for this run. They go home on extract and are not new. */
+/** Gear that left the stash for this run. It comes home and is not new loot. */
 function carriedHome(run: ActiveRun): number {
   let n = 0
   for (const stack of run.bag) {
     if (stack.kind === 'sword') continue
-    n += stack.units?.length ?? 0
+    n += (stack.units ?? []).filter((unit) => unit.origin !== 'loot').length
   }
-  if (run.insured?.unit && run.insured.kind !== 'sword') n += 1
-  if (run.insured?.spear) n += 1
-  if (run.insured?.blade) n += 1
+  if (run.insured?.unit && run.insured.kind !== 'sword' && run.insured.unit.origin !== 'loot') n += 1
+  if (run.insured?.spear && run.insured.spear.origin !== 'loot') n += 1
+  if (run.insured?.blade && run.insured.blade.origin !== 'loot') n += 1
   return n
 }
 
-export function applyExtract(account: Account, loot: LootRow[], depth: number): Ok<{ value: number }> | Fail {
+/** A base action, or a run left open for two hours, is not a live delve. */
+export const STALE_RUN_MS = 2 * 60 * 60 * 1000
+
+export function staleDelve(atBase: boolean, startedAt: number, now: number): boolean {
+  if (atBase) return true
+  return Number.isFinite(startedAt) && now - startedAt >= STALE_RUN_MS
+}
+
+export function applyExtract(account: Account, loot: LootRow[], depth: number): Ok<{ value: number; kept: number; left: number }> | Fail {
   const run = account.activeRun
   if (!run) return { ok: false, reason: 'no-run' }
   const floor = Math.max(1, Math.min(7, Math.floor(depth) || 1))
-  const free = STASH_CAP - (stashUsed(account) + carriedHome(run))
-  if (loot.length > Math.max(0, free)) return { ok: false, reason: 'stash-full' }
-  let value = 0
   for (const row of loot) {
     if (!coinFits(row.kind, row.coins, floor)) return { ok: false, reason: 'coins' }
+    if (row.kind === 'tombak' && rarityFor(row.coins) === 'biasa') return { ok: false, reason: 'coins' }
+  }
+  const free = Math.max(0, STASH_CAP - (stashUsed(account) + carriedHome(run)))
+  const ranked = [...loot].sort((a, b) => b.coins - a.coins)
+  const accepted = ranked.slice(0, free)
+  const left = ranked.length - accepted.length
+  let value = 0
+  for (const row of accepted) {
     value += row.coins
     if (row.kind === 'tombak') {
       const rarity = rarityFor(row.coins)
-      if (rarity === 'biasa') return { ok: false, reason: 'coins' }
       account.spears.push({ id: `find-${run.id}-${account.spears.length}`, rarity, perks: [], coins: row.coins, origin: 'stash' })
       continue
     }
@@ -519,7 +531,7 @@ export function applyExtract(account: Account, loot: LootRow[], depth: number): 
   account.depth = Math.max(account.depth || 1, floor)
   account.chosenDepth = account.depth
   account.activeRun = null
-  return { ok: true, value }
+  return { ok: true, value, kept: accepted.length, left }
 }
 
 export function applyDeath(account: Account, depth: number): Ok<{ depth: number }> | Fail {

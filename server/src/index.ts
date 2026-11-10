@@ -1,6 +1,6 @@
 import { boardSql, personalBestSql } from './board.ts'
 import { ALTERS, RETIRE_BLOBS, SCHEMA } from './schema.ts'
-import { applyDeath, applyExtract, buyMerchant, chooseWeapon, fieldBuy, freshAccount, mendShield, replayTutorialAccount, seeTip, sellCommon, sellUnit, settleOneWeapon, skipTutorial, startRun, undoRun, upgradeBag, upgradeWeapon, type Account, type LootRow, type Pick } from '../../shared/account.ts'
+import { applyDeath, applyExtract, buyMerchant, chooseWeapon, fieldBuy, freshAccount, mendShield, replayTutorialAccount, seeTip, sellCommon, sellUnit, settleOneWeapon, skipTutorial, staleDelve, startRun, undoRun, upgradeBag, upgradeWeapon, type Account, type LootRow, type Pick } from '../../shared/account.ts'
 import { checksumAddress, isAddress, normAddress, randomNonce, readMessageAddress, readNonce, recoverAddress, signInMessageOk, signInTarget, siweMessage } from './siwe.ts'
 import { judgeRun, MIN_SECONDS, weekKey, type RunEvent } from './rules.ts'
 
@@ -222,6 +222,11 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
     const body = await readJson(request)
     const loaded = await loadAccount(env, address, now)
     const account = loaded.account
+    const open = await env.DB.prepare(`SELECT issued_at FROM runs WHERE address = ? AND status = 'open' ORDER BY issued_at DESC LIMIT 1`).bind(address).first<{ issued_at: number }>()
+    if (account.activeRun || open) {
+      const started = open?.issued_at ?? now
+      if (staleDelve(body?.atBase === true, started, now)) await abandonOpenRuns(env, address, account, now)
+    }
     const action = path.slice('/v1/act/'.length)
     const result = runAction(account, action, body ?? {})
     if (!result.ok) return json({ error: result.reason, state: account }, 422)
@@ -283,7 +288,12 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
     }
     const loot: LootRow[] = events.filter((event) => event.kind === 'loot' && event.item && event.coins != null).map((event) => ({ kind: event.item!, coins: event.coins! }))
     const applied = applyExtract(loaded.account, loot, verdict.depth)
-    if (!applied.ok) return json({ error: applied.reason, state: loaded.account }, 422)
+    if (!applied.ok) {
+      if (loaded.account.activeRun) undoRun(loaded.account)
+      await env.DB.prepare('UPDATE runs SET status = ?, reason = ?, depth = ?, value = ?, elapsed_ms = ? WHERE id = ?').bind('rejected', applied.reason, verdict.depth, verdict.value, elapsedMs, run.id).run()
+      const revision = await storeAccount(env, address, loaded.account, now)
+      return json({ accepted: false, ranked: false, reason: applied.reason, error: applied.reason, depth: verdict.depth, value: verdict.value, elapsedMs, revision, state: loaded.account }, 422)
+    }
     await env.DB.prepare('UPDATE runs SET status = ?, depth = ?, value = ?, reason = ?, elapsed_ms = ? WHERE id = ?').bind(verdict.flagged ? 'flagged' : 'accepted', verdict.depth, verdict.value, verdict.reason ?? null, elapsedMs, run.id).run()
     await env.DB.prepare('INSERT INTO scores (run_id, address, depth, value, week, created_at, flagged) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(run.id, address, verdict.depth, verdict.value, weekKey(now), now, verdict.flagged ? 1 : 0).run()
     const best = await env.DB.prepare(personalBestSql()).bind(address).first<{ run_id: string; value: number; depth: number }>()
@@ -296,6 +306,8 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
       value: verdict.value,
       depth: verdict.depth,
       flagged: verdict.flagged,
+      kept: applied.kept,
+      left: applied.left,
       revision,
       state: loaded.account,
     })

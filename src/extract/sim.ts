@@ -556,6 +556,43 @@ export function stashIncoming(run: Run): number {
   return n
 }
 
+function trimIncoming(run: Run, room: number): number {
+  type Bit = { coins: number; drop: () => void }
+  const bits: Bit[] = []
+  for (const stack of run.bag) {
+    if (stack.kind === 'sword') continue
+    for (const unit of [...(stack.units ?? [])]) {
+      if (unit.origin === 'stash') continue
+      bits.push({
+        coins: unit.coins,
+        drop: () => {
+          stack.units = (stack.units ?? []).filter((item) => item !== unit)
+          stack.n = stack.units.length
+        },
+      })
+    }
+  }
+  for (const spear of [...(run.found ?? [])]) {
+    bits.push({
+      coins: spear.coins ?? 0,
+      drop: () => { run.found = (run.found ?? []).filter((item) => item !== spear) },
+    })
+  }
+  for (const blade of [...(run.foundBlades ?? [])]) {
+    if (blade.origin === 'stash') continue
+    bits.push({
+      coins: blade.coins,
+      drop: () => { run.foundBlades = (run.foundBlades ?? []).filter((item) => item !== blade) },
+    })
+  }
+  bits.sort((a, b) => a.coins - b.coins)
+  const extra = bits.length - room
+  if (extra <= 0) return 0
+  for (const bit of bits.slice(0, extra)) bit.drop()
+  run.bag = run.bag.filter((stack) => stack.kind === 'sword' || (stack.units?.length ?? 0) > 0)
+  return extra
+}
+
 function stashReturning(run: Run): number {
   let n = 0
   for (const stack of run.bag) {
@@ -1048,7 +1085,7 @@ function noteDeepest(save: ExtractSave): void {
 export function bankRun(save: ExtractSave): boolean {
   const run = save.run
   if (!run || run.channel < EXTRACT_TIME) return false
-  if (stashIncoming(run) > Math.max(0, 20 - (stashUsed(save) + stashReturning(run)))) return false
+  trimIncoming(run, Math.max(0, 20 - (stashUsed(save) + stashReturning(run))))
   noteDeepest(save)
   if (run.sword) add(save.stash, 'sword', 1)
   if (run.spear) {

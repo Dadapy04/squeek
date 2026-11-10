@@ -578,7 +578,7 @@ export async function noteExtract(report: RunReport): Promise<RunNotice> {
   }
   try {
     const response = await api('/v1/runs/extract', { method: 'POST', body: JSON.stringify({ token, ...report }) })
-    const body = await response.json().catch(() => ({})) as { reason?: string; error?: string; depth?: number; elapsedMs?: number; ranked?: boolean; record?: boolean; bestValue?: number; state?: unknown }
+    const body = await response.json().catch(() => ({})) as { reason?: string; error?: string; depth?: number; elapsedMs?: number; ranked?: boolean; record?: boolean; bestValue?: number; left?: number; state?: unknown }
     if (body.state) {
       permitRunEnd()
       hooks.setSave(saveFromBlob(JSON.stringify(body.state)))
@@ -595,7 +595,8 @@ export async function noteExtract(report: RunReport): Promise<RunNotice> {
       tellRank(message)
       return { ok: true, ranked: false, message }
     }
-    const message = body.record === false && typeof body.bestValue === 'number' ? keptRecordNote(body.bestValue) : t('online.ranked')
+    let message = body.record === false && typeof body.bestValue === 'number' ? keptRecordNote(body.bestValue) : t('online.ranked')
+    if ((body.left ?? 0) > 0) message = `${t('result.leftBehind', { n: body.left ?? 0 })}\n${message}`
     setText('cloudStatus', message)
     return { ok: true, ranked: true, message }
   } catch {
@@ -636,7 +637,8 @@ export async function noteDeath(depth: number): Promise<RunNotice> {
 export async function walletAct(path: string, body: unknown, apply = true): Promise<{ ok: boolean; reason?: string; gained?: number; coins?: number }> {
   if (!hooks || !walletLive()) return { ok: false, reason: 'offline' }
   try {
-    const response = await api(path, { method: 'POST', body: JSON.stringify(body ?? {}) })
+    const sent = typeof body === 'object' && body !== null ? { ...body, atBase: !inRun() } : { atBase: !inRun() }
+    const response = await api(path, { method: 'POST', body: JSON.stringify(sent) })
     const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; state?: unknown; gained?: number }
     if (apply && payload.state) hooks.setSave(saveFromBlob(JSON.stringify(payload.state)))
     if (!response.ok || payload.ok === false) return { ok: false, reason: payload.error }
