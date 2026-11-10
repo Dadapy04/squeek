@@ -403,6 +403,7 @@ export const DICT = {
   'haz.pod': { id: 'Kepompong sarang. Mundur sebelum pecah', en: 'Hive pod. Step back before it bursts' },
   'haz.cart': { id: 'Gerobak rel. Minggir', en: 'Rail cart. Step aside' },
   'haz.cocoon': { id: 'Kepompong jaring menahan langkah', en: 'A cocoon holds your steps' },
+  'haz.web': { id: 'Jaring menahan langkah', en: 'The web holds your steps' },
   'haz.vent': { id: 'Lubang bara. Jauhi saat menyala', en: 'Ember vent. Leave it while it glows' },
   'room.dark': { id: 'Kegelapan', en: 'Darkness' },
   'room.fall': { id: 'Batu jatuh', en: 'Rocks fall' },

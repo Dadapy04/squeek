@@ -269,7 +269,7 @@ export interface Foe {
   lurk?: { x: number; y: number }
   /** Split jelly, or a planted mine / ember. */
   child?: boolean
-  marks?: { x: number; y: number; life: number }[]
+  marks?: { x: number; y: number; life: number; nicked?: boolean }[]
   /** Seconds the player has shared this boss's room. */
   fought?: number
   /** Armor glance sparks. */
@@ -1454,6 +1454,67 @@ export function trySwing(run: Run): boolean {
 
 export type StepResult = 'play' | 'dead' | 'extracted'
 
+/** World radii of every slow. The drawn patch uses these same numbers. */
+export const SLOW_RADIUS = { root: 22, cocoon: 24, web: 18, trail: 16, wax: 16 } as const
+
+export type SlowKind = keyof typeof SLOW_RADIUS
+
+export interface SlowZone {
+  x: number
+  y: number
+  r: number
+  kind: SlowKind
+}
+
+/** True when (x, y) is inside the zone. Web keeps its old closed edge. */
+export function zoneHits(zone: SlowZone, x: number, y: number): boolean {
+  const dist = Math.hypot(zone.x - x, zone.y - y)
+  return zone.kind === 'web' ? dist <= zone.r : dist < zone.r
+}
+
+/** Pixel offsets of the patch. Every dot sits inside the hit circle. */
+export function slowPixels(zone: SlowZone): { x: number; y: number }[] {
+  const dots: { x: number; y: number }[] = []
+  const limit = Math.ceil(zone.r)
+  for (let y = -limit; y <= limit; y += 2) {
+    for (let x = -limit; x <= limit; x += 2) {
+      if (zone.kind === 'web' ? Math.hypot(x, y) <= zone.r : Math.hypot(x, y) < zone.r) dots.push({ x, y })
+    }
+  }
+  return dots
+}
+
+/** Moss, cocoons, webs, digger roots, and wax. Only what is in this room right now. */
+export function slowZones(run: Run): SlowZone[] {
+  const zones: SlowZone[] = []
+  const roomId = run.roomId
+  if (run.chart && roomId) {
+    for (const prop of run.chart.props) {
+      if (prop.room !== roomId || prop.state === 'spent') continue
+      if (prop.kind === 'root') zones.push({ x: prop.x, y: prop.y, r: SLOW_RADIUS.root, kind: 'root' })
+      else if (prop.kind === 'cocoon') zones.push({ x: prop.x, y: prop.y, r: SLOW_RADIUS.cocoon, kind: 'cocoon' })
+      else if (prop.kind === 'web') zones.push({ x: prop.x, y: prop.y, r: SLOW_RADIUS.web, kind: 'web' })
+    }
+  }
+  for (const foe of run.foes) {
+    if (foe.hp <= 0 || run.slain.includes(foe.id) || foe.zone !== run.zone) continue
+    if (run.zone === 'kamar' && foe.room && foe.room !== roomId) continue
+    const kind: SlowKind | null = foe.kind === 'burrow' ? 'trail' : foe.kind === 'swarm' || foe.kind === 'jelly' ? 'wax' : null
+    if (!kind) continue
+    for (const mark of foe.marks ?? []) {
+      if (mark.life <= 0) continue
+      zones.push({ x: mark.x, y: mark.y, r: SLOW_RADIUS[kind], kind })
+    }
+  }
+  return zones
+}
+
+/** Overlap this frame, or a hit-snare that is still counting down. Zones do not leave a timer behind. */
+export function isSlowed(run: Run): boolean {
+  if ((run.snare ?? 0) > 0) return true
+  return slowZones(run).some((zone) => zoneHits(zone, run.x, run.y))
+}
+
 export function step(run: Run, input: Input, dt: number): StepResult {
   if (run.hp <= 0) return 'dead'
   const real = Math.max(0, Math.min(0.05, dt))
@@ -1480,7 +1541,7 @@ export function step(run: Run, input: Input, dt: number): StepResult {
   const casting = (run.soul?.cast ?? 0) > 0
   if (len > 0.15 && run.dodge <= 0 && !casting) {
     run.facing = Math.atan2(input.moveY, input.moveX)
-    const speed = 92 * Math.min(1, len) * ((run.snare ?? 0) > 0 ? 0.45 : 1)
+    const speed = 92 * Math.min(1, len) * (isSlowed(run) ? 0.45 : 1)
     run.x += (input.moveX / len) * speed * h
     run.y += (input.moveY / len) * speed * h
   }
@@ -1882,11 +1943,13 @@ function tickMarks(run: Run, foe: Foe, h: number): void {
       if (Math.hypot(mark.x - run.x, mark.y - run.y) < 36) hurtRaw(run, foe.damage ?? 24, mark.x, mark.y)
       continue
     }
-    if (!explode && mark.life > 0 && Math.hypot(mark.x - run.x, mark.y - run.y) < 16) {
-      hurtRaw(run, Math.max(6, Math.round((foe.damage ?? 12) * (foe.kind === 'wisp' ? 0.55 : 0.3))), mark.x, mark.y)
-      if (foe.kind === 'burrow') run.snare = Math.max(run.snare ?? 0, 0.75)
-      if (foe.kind === 'swarm' || foe.kind === 'jelly') run.snare = Math.max(run.snare ?? 0, 0.45)
-      mark.life = 0
+    if (!explode && mark.life > 0 && Math.hypot(mark.x - run.x, mark.y - run.y) < SLOW_RADIUS.trail) {
+      const zone = foe.kind === 'burrow' || foe.kind === 'swarm' || foe.kind === 'jelly'
+      if (!zone || !mark.nicked) {
+        hurtRaw(run, Math.max(6, Math.round((foe.damage ?? 12) * (foe.kind === 'wisp' ? 0.55 : 0.3))), mark.x, mark.y)
+        mark.nicked = true
+      }
+      if (!zone) mark.life = 0
     }
     if (mark.life > 0) next.push(mark)
   }
@@ -2481,22 +2544,20 @@ function tickHazard(run: Run, room: RoomNode, h: number): void {
       } else prop.fuse = 0.9
       continue
     }
-    if (prop.kind === 'root' && dist < 22) {
+    if (prop.kind === 'root' && dist < SLOW_RADIUS.root) {
       noteHazard(run, 'root')
-      run.snare = Math.max(run.snare ?? 0, 0.9)
       continue
     }
-    if (prop.kind === 'cocoon' && dist < 24) {
+    if (prop.kind === 'cocoon' && dist < SLOW_RADIUS.cocoon) {
       noteHazard(run, 'cocoon')
-      run.snare = Math.max(run.snare ?? 0, 1.7)
       continue
     }
     if (prop.kind !== 'puddle' && prop.kind !== 'lava' && prop.kind !== 'web' && prop.kind !== 'thorn' && prop.kind !== 'debris') continue
-    if (dist > 18) continue
     if (prop.kind === 'web') {
-      run.snare = Math.max(run.snare ?? 0, 1.1)
+      if (dist <= SLOW_RADIUS.web) noteHazard(run, 'web')
       continue
     }
+    if (dist > 18) continue
     const amount = prop.kind === 'lava' ? 16 : prop.kind === 'puddle' ? 8 : 14
     hurtHazard(run, prop, amount)
   }

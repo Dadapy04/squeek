@@ -10,7 +10,7 @@ import { doorPad, nextExitDoor, onDoor, roomAt, type Dir } from './dungeon.ts'
 import { drawThemeMotes, paintThemePlate, themeKit } from './tilesets.ts'
 import { foeCanvas, hasFoeSprite } from './foe-sprites.ts'
 import { blitMotif, interactable, mapLabel, spriteIdFor } from './map-sprites.ts'
-import { BLAST_RADIUS, EXTRACT_ZONE, FOE_SPOTS, NEST_DOOR, SOUL_CAST, SOUL_RADIUS, STAIRS, SWING_REACH, ZONE_H, ZONE_W, claimTarget, depthMods, foeView, isSpecial, lootTitle, nestGap, runCrates, stairsOpen, syncCentipede, swordAim, type Drop, type Foe, type Run } from './sim.ts'
+import { BLAST_RADIUS, EXTRACT_ZONE, FOE_SPOTS, NEST_DOOR, SOUL_CAST, SOUL_RADIUS, STAIRS, SWING_REACH, ZONE_H, ZONE_W, claimTarget, depthMods, foeView, isSlowed, isSpecial, lootTitle, nestGap, runCrates, slowPixels, slowZones, stairsOpen, syncCentipede, swordAim, type Drop, type Foe, type Run, type SlowZone } from './sim.ts'
 
 interface Puff {
   x: number
@@ -267,6 +267,7 @@ export function drawExtract(
   const hero = at(run.x, run.y)
   if (run.dodge > 0) ctx.globalAlpha = 0.78
   const rite = cast > 0 && elapsed < 0.55 ? Math.min(1, elapsed / 0.25) : 0
+  drawSlowZones(ctx, run, scale, at)
   drawHero(ctx, hero.x, hero.y, scale, {
     facing: run.facing,
     gait: run.gait,
@@ -285,6 +286,7 @@ export function drawExtract(
     breakFx: run.breakFx,
     rite,
   })
+  if (isSlowed(run)) drawSlowMark(ctx, hero.x, hero.y, scale)
   if (run.breakFx > 0) {
     ctx.fillStyle = '#e7edf4'
     for (let i = 0; i < 5; i += 1) {
@@ -1294,7 +1296,8 @@ function drawDungeonDress(
       continue
     }
     if (prop.state === 'spent') continue
-    if (prop.kind === 'root' || prop.kind === 'cloud' || prop.kind === 'pod' || prop.kind === 'cart' || prop.kind === 'cocoon' || prop.kind === 'vent') {
+    if (prop.kind === 'root' || prop.kind === 'cocoon' || prop.kind === 'web') continue
+    if (prop.kind === 'cloud' || prop.kind === 'pod' || prop.kind === 'cart' || prop.kind === 'vent') {
       drawHazard(ctx, at(prop.x, prop.y), scale, prop.kind, prop.fuse ?? 0, run.age, prop.lane ?? 1)
       continue
     }
@@ -2134,11 +2137,44 @@ function drawMound(ctx: CanvasRenderingContext2D, p: { x: number; y: number }, s
   blot(ctx, p.x - 4 * scale, p.y - 6 * scale, 8 * scale, 4 * scale, wind > 0 ? '#f2c04a' : '#6a442c')
 }
 
+function drawSlowZones(
+  ctx: CanvasRenderingContext2D,
+  run: Run,
+  scale: number,
+  at: (x: number, y: number) => { x: number; y: number },
+): void {
+  for (const zone of slowZones(run)) drawSlowPatch(ctx, at(zone.x, zone.y), scale, zone)
+}
+
+function drawSlowPatch(ctx: CanvasRenderingContext2D, p: { x: number; y: number }, scale: number, zone: SlowZone): void {
+  const moss = zone.kind === 'root' || zone.kind === 'trail'
+  const wax = zone.kind === 'wax'
+  const fill = moss ? '#1c3a14' : wax ? '#3a2058' : '#d5dee6'
+  const rim = moss ? '#d6ff6a' : wax ? '#e7c27a' : '#f7fbff'
+  const vein = moss ? '#6a3a18' : wax ? '#b388ff' : '#4a3a58'
+  const s = Math.max(1, scale)
+  for (const dot of slowPixels(zone)) {
+    const edge = Math.hypot(dot.x, dot.y) > zone.r - 3
+    blot(ctx, p.x + dot.x * scale, p.y + dot.y * scale, s, s, edge ? rim : (dot.x + dot.y) % 4 === 0 ? vein : fill)
+  }
+}
+
+function drawSlowMark(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number): void {
+  const s = Math.max(1, scale)
+  ctx.fillStyle = 'rgba(120, 170, 48, 0.42)'
+  ctx.fillRect(Math.round(x - 7 * s), Math.round(y - 12 * s), Math.round(14 * s), Math.round(10 * s))
+  blot(ctx, x - 4 * s, y - 20 * s, 2 * s, 5 * s, '#6a3a18')
+  blot(ctx, x - 2 * s, y - 22 * s, 6 * s, 2 * s, '#d6ff6a')
+  blot(ctx, x + 2 * s, y - 20 * s, 2 * s, 4 * s, '#6a3a18')
+}
+
 function drawSpecialTelegraph(ctx: CanvasRenderingContext2D, foe: Foe, x: number, y: number, scale: number): void {
-  for (const mark of foe.marks ?? []) {
-    const life = Math.max(0.2, mark.life)
-    ctx.strokeStyle = foe.kind === 'bomber' ? `rgba(242, 120, 70, ${life})` : `rgba(224, 90, 40, ${life * 0.7})`
-    ctx.strokeRect(Math.round(x + (mark.x - foe.x) * scale - 4 * scale), Math.round(y + (mark.y - foe.y) * scale - 4 * scale), Math.round(8 * scale), Math.round(8 * scale))
+  if (foe.kind !== 'burrow' && foe.kind !== 'swarm' && foe.kind !== 'jelly') {
+    for (const mark of foe.marks ?? []) {
+      const life = Math.max(0.2, mark.life)
+      ctx.strokeStyle = foe.kind === 'bomber' ? `rgba(242, 120, 70, ${life})` : `rgba(224, 90, 40, ${life * 0.7})`
+      ctx.strokeRect(Math.round(x + (mark.x - foe.x) * scale - 4 * scale), Math.round(y + (mark.y - foe.y) * scale - 4 * scale), Math.round(8 * scale), Math.round(8 * scale))
+    }
   }
   if (foe.wind <= 0 && !(foe.lurk && foe.hidden)) return
   const pattern: AttackKind = foe.kind === 'boss' ? bossPattern(String(foe.breed), foe.pattern ?? 0, foe.phase ?? 0).kind : foe.kind === 'spore' || foe.kind === 'web' ? 'bolt' : foe.kind === 'beetle' || foe.kind === 'ember' || foe.kind === 'mole' ? 'charge' : foe.kind === 'burrow' || foe.kind === 'wisp' ? 'burrow' : 'slam'
