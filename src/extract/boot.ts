@@ -1181,12 +1181,14 @@ function frame(now: number): void {
       }
       notePlay(save.run, input)
       hear(save.run)
-      tap.attack = false
-      tap.dodge = false
-      tap.interact = false
-      tap.claim = false
-      tap.soul = false
-      tap.use = null
+      if (dt > 0) {
+        tap.attack = false
+        tap.dodge = false
+        tap.interact = false
+        tap.claim = false
+        tap.soul = false
+        tap.use = null
+      }
       if (next === 'extracted' || next === 'dead') finish(next)
       else {
         sinceSave += dt
