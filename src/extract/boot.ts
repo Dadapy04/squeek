@@ -66,6 +66,7 @@ import {
   insureStash,
   sellCommon,
   sellOne,
+  stashUsed,
   stashValue,
   uninsure,
   uninsureStash,
@@ -1433,8 +1434,19 @@ function finish(kind: 'extracted' | 'dead'): void {
     void finishWallet(kind, report, carried, gained, depth).finally(() => { finishing = false })
     return
   }
-  if (kind === 'extracted') bankRun(save)
-  else killRun(save)
+  if (kind === 'extracted') {
+    if (!bankRun(save)) {
+      if (save.run) {
+        const note = document.querySelector<HTMLElement>('#deployError')
+        if (note) {
+          note.hidden = false
+          note.textContent = t('err.stashFull')
+        }
+        save.run.channel = 0
+      }
+      return
+    }
+  } else killRun(save)
   outcome = kind
   lastResult = { kind, rows: carried, gained }
   writeExtract(storage, save)
@@ -1944,7 +1956,7 @@ function renderBase(): void {
   const held = stashGroups()
   const panel = document.createElement('div')
   panel.className = 'inv'
-  panel.append(invHead(t('stash.value', { n: total }), t('stash.count', { n: held.used, max: STASH_SLOTS })))
+  panel.append(invHead(t('stash.value', { n: total }), t('stash.count', { n: stashUsed(save), max: STASH_SLOTS })))
   const gear = document.createElement('div')
   gear.className = 'inv-gear'
   const weapon = save.spear

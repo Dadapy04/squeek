@@ -849,10 +849,10 @@ button.danger { background: #6e2420; color: #fff6f2; border-color: #a14a42; }
 .inv-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
 .inv-total, .inv-cap { margin: 0; font-size: 13px; color: #f6ecd8; }
 .inv-cap { color: #f2c04a; white-space: nowrap; }
-.inv-gear { display: flex; gap: 6px; }
+.inv-gear { display: flex; flex-wrap: wrap; gap: 6px; }
 .inv-gear .inv-slot { width: 72px; height: 76px; flex: 0 0 72px; }
-.inv-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, 210px); gap: 8px; min-width: 0; align-items: start; }
-.inv-grid { display: grid; grid-template-columns: repeat(auto-fill, 72px); gap: 6px; min-width: 0; }
+.inv-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, 210px); gap: 8px; width: 100%; min-width: 0; align-items: start; }
+.inv-grid { display: grid; width: 100%; grid-template-columns: repeat(auto-fill, 72px); gap: 6px; min-width: 0; }
 .inv-slot { position: relative; width: 72px; height: 76px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 1px; min-width: 0; margin: 0; padding: 14px 2px 2px; border-radius: 6px; border: 2px solid #3a3228; background: #1c1814; box-shadow: none; overflow: hidden; }
 .inv-slot.empty { border-style: dashed; background: #120f0c; }
 .inv-slot.on { box-shadow: inset 0 0 0 2px #f2c04a; }
@@ -871,13 +871,13 @@ button.danger { background: #6e2420; color: #fff6f2; border-color: #a14a42; }
 .loot b, .loot span { overflow: hidden; text-overflow: ellipsis; }
 @media (orientation: landscape) and (max-height: 520px) {
   #loadout { display: block; }
-  .inv-main { display: flex; flex-direction: column; }
+  .inv-main { display: flex; flex-direction: column; width: 100%; }
   .inv-detail { order: -1; }
   .inv-detail .primary { min-height: 40px; font-size: 14px; }
   #bagDetail .row button, .inv-detail button { min-height: 32px; padding: 3px 8px; font-size: 12px; }
   .stash-total { margin: 4px 0; padding: 4px 8px; font-size: 14px; }
-  .inv-grid { grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 4px; }
-  .inv-slot { padding-top: 14px; }
+  .inv-grid { grid-template-columns: repeat(auto-fill, 64px); gap: 4px; }
+  .inv-slot, .inv-gear .inv-slot { width: 64px; flex-basis: 64px; }
   .inv-ico.bag-slot { width: 22px; height: 22px; background-size: 22px 22px; }
   #base h1.logo img { width: min(140px, 28vw); }
 }

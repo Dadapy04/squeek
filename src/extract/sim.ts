@@ -547,6 +547,27 @@ export function freshValue(run: Run): number {
   return sum
 }
 
+export function stashIncoming(run: Run): number {
+  let n = (run.found ?? []).length + (run.foundBlades ?? []).length
+  for (const stack of run.bag) {
+    if (stack.kind === 'sword') continue
+    n += (stack.units ?? []).filter((unit) => unit.origin !== 'stash').length
+  }
+  return n
+}
+
+function stashReturning(run: Run): number {
+  let n = 0
+  for (const stack of run.bag) {
+    if (stack.kind === 'sword') continue
+    n += (stack.units ?? []).filter((unit) => unit.origin === 'stash').length
+  }
+  if (run.insured?.unit && run.insured.kind !== 'sword') n += 1
+  if (run.insured?.spear) n += 1
+  if (run.insured?.blade) n += 1
+  return n
+}
+
 export function stashUsed(save: ExtractSave): number {
   let n = 0
   for (const stack of save.stash) if (stack.kind !== 'sword') n += stack.n
@@ -1022,6 +1043,7 @@ function noteDeepest(save: ExtractSave): void {
 export function bankRun(save: ExtractSave): boolean {
   const run = save.run
   if (!run || run.channel < EXTRACT_TIME) return false
+  if (stashIncoming(run) > Math.max(0, 20 - (stashUsed(save) + stashReturning(run)))) return false
   noteDeepest(save)
   if (run.sword) add(save.stash, 'sword', 1)
   if (run.spear) {

@@ -522,6 +522,7 @@ function rejectText(body: { reason?: string; error?: string; depth?: number; ela
   if (reason === 'log') return t('online.why.log')
   if (reason === 'time') return t('online.why.time')
   if (reason === 'token') return t('online.why.token')
+  if (reason === 'stash-full') return t('err.stashFull')
   return t('online.rejected')
 }
 

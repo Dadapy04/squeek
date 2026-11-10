@@ -462,10 +462,25 @@ export function undoRun(account: Account): void {
   account.activeRun = null
 }
 
+/** Items taken from the stash for this run. They go home on extract and are not new. */
+function carriedHome(run: ActiveRun): number {
+  let n = 0
+  for (const stack of run.bag) {
+    if (stack.kind === 'sword') continue
+    n += stack.units?.length ?? 0
+  }
+  if (run.insured?.unit && run.insured.kind !== 'sword') n += 1
+  if (run.insured?.spear) n += 1
+  if (run.insured?.blade) n += 1
+  return n
+}
+
 export function applyExtract(account: Account, loot: LootRow[], depth: number): Ok<{ value: number }> | Fail {
   const run = account.activeRun
   if (!run) return { ok: false, reason: 'no-run' }
   const floor = Math.max(1, Math.min(7, Math.floor(depth) || 1))
+  const free = STASH_CAP - (stashUsed(account) + carriedHome(run))
+  if (loot.length > Math.max(0, free)) return { ok: false, reason: 'stash-full' }
   let value = 0
   for (const row of loot) {
     if (!coinFits(row.kind, row.coins, floor)) return { ok: false, reason: 'coins' }
