@@ -122,4 +122,66 @@ describe('depth, boss, and fresh maps', () => {
     expect(depthPlan(2).boss.hp).toBeGreaterThan(depthMods(2).bossHp)
     expect(depthMods(2).bossHp).toBeGreaterThan(BOSS_BASE_HP)
   })
+
+  it('moves the kelabang the same distance at 60 and 120 fps', () => {
+    function chase(dt: number, frames: number): number {
+      const save = freshSave()
+      deploy(save, [{ kind: 'sword', n: 1 }])
+      const run = save.run!
+      const boss = run.foes.find((foe) => foe.kind === 'boss')!
+      run.zone = boss.zone
+      run.x = boss.x + 90
+      run.y = boss.y
+      boss.heard = 0
+      boss.wind = 0
+      boss.dash = 0
+      boss.cd = 9
+      const x0 = boss.x
+      const y0 = boss.y
+      for (let i = 0; i < frames; i += 1) step(run, still, dt)
+      return Math.hypot(boss.x - x0, boss.y - y0)
+    }
+    const at60 = chase(1 / 60, 60)
+    const at120 = chase(1 / 120, 120)
+    expect(Math.abs(at60 - at120)).toBeLessThan(1.5)
+    expect(at60).toBeGreaterThan(10)
+    expect(at60).toBeLessThan(22)
+  })
+
+  it('dashes a brute only after the telegraph and does not spam a chest prompt', () => {
+    const save = freshSave()
+    deploy(save, [{ kind: 'sword', n: 1 }])
+    const run = save.run!
+    const brute = run.foes.find((foe) => foe.kind === 'brute')!
+    run.zone = brute.zone
+    run.x = brute.x + 30
+    run.y = brute.y
+    brute.wind = 0.16
+    brute.dash = 0
+    brute.cd = 0
+    brute.heard = 0
+    step(run, still, 1 / 60)
+    expect(brute.dash).toBe(0)
+    for (let i = 0; i < 20 && brute.wind > 0; i += 1) step(run, still, 1 / 60)
+    expect(brute.wind).toBeLessThanOrEqual(0)
+    expect(brute.dash).toBeGreaterThan(0)
+    const chest = run.chart!.props.find((prop) => prop.kind === 'chest')!
+    run.zone = chest.zone
+    run.roomId = chest.room
+    run.seed = run.chart!.seed
+    run.depth = run.chart!.depth
+    run.x = chest.x
+    run.y = chest.y
+    run.floats = []
+    for (let i = 0; i < 90; i += 1) step(run, still, 1 / 60)
+    expect(run.floats.filter((item) => /chest|peti|open|buka|key|kunci/i.test(item.text))).toHaveLength(0)
+    chest.lock = 'key'
+    chest.state = 'live'
+    run.keys = 0
+    const press = { ...still, interact: true }
+    step(run, press, 1 / 60)
+    step(run, press, 1 / 60)
+    expect(run.floats.filter((item) => item.text === 'The chest is locked')).toHaveLength(1)
+    expect(chest.state).toBe('live')
+  })
 })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SOUND_CUES, allowSound, armBossFinale, bedFor, bossPitch, cuesFromDelta, deltaFromSnaps, mixLedger, playBed, readAudioPref, resetMix, writeAudioPref, type CueDelta, type Ear } from '../src/extract/game-audio.ts'
+import { SOUND_CUES, advanceMelody, allowSound, armBossFinale, bedFor, bossPitch, cuesFromDelta, deltaFromSnaps, mixLedger, playBed, readAudioPref, resetMix, writeAudioPref, type CueDelta, type Ear } from '../src/extract/game-audio.ts'
 
 const blank: Ear = {
   hp: 125, stepping: false, swing: 0, dodge: 0, blocking: false, shield: 4, bag: 0, drops: 0,
@@ -132,6 +132,26 @@ describe('sound hooks', () => {
     resetMix()
     expect(armBossFinale()).toBe(true)
     resetMix()
+  })
+
+  it('does not dump a melody note on every frame', () => {
+    let nextAt = 0.2
+    let plays = 0
+    for (let i = 0; i < 120; i += 1) {
+      const beat = advanceMelody(i / 120, nextAt)
+      nextAt = beat.nextAt
+      if (beat.play) plays += 1
+    }
+    expect(plays).toBeLessThanOrEqual(1)
+    let later = 0
+    nextAt = 0
+    for (let t = 0; t < 8; t += 1 / 60) {
+      const beat = advanceMelody(t, nextAt)
+      nextAt = beat.nextAt
+      if (beat.play) later += 1
+    }
+    expect(later).toBeLessThanOrEqual(5)
+    expect(later).toBeGreaterThan(2)
   })
 
   it('rate-limits a swarm so the same hit cannot retrigger inside its gap', () => {

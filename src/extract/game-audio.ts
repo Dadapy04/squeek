@@ -382,6 +382,7 @@ let stopPhrase: (() => void) | null = null
 const padOscs: OscillatorNode[] = []
 const noteOscs = new Set<OscillatorNode>()
 let bedBus: GainNode | null = null
+let bedStarted = 0
 
 export function mixLedger(): { oscillators: number; timers: number; beds: number } {
   return { oscillators: liveOsc, timers, beds: currentBed ? 1 : 0 }
@@ -452,6 +453,12 @@ export function resetMix(): void {
   crackleAt = -Infinity
 }
 
+/** One note per gap, even if the timer dumps a backlog. */
+export function advanceMelody(now: number, nextAt: number, gap = 1.7): { play: boolean; nextAt: number } {
+  if (now + 0.25 < nextAt) return { play: false, nextAt }
+  return { play: true, nextAt: Math.max(nextAt, now) + gap }
+}
+
 function phraseVoice(audio: AudioContext, dest: GainNode, freq: number, gen: number): void {
   if (gen !== generation) return
   const osc = audio.createOscillator()
@@ -480,12 +487,19 @@ export function playBed(id: BedId, pref: AudioPref, host: AudioHost | null = typ
   const ducked = audio.currentTime < duckUntil
   const want = pref.muted ? 0 : pref.music * (ducked ? 0.03 : 0.22)
   if (id === currentBed && bedBus) {
-    musicGain.gain.cancelScheduledValues(audio.currentTime)
-    musicGain.gain.linearRampToValueAtTime(want, audio.currentTime + 0.2)
+    const held = musicGain.gain.value
+    if (Math.abs(held - want) > 0.02) {
+      musicGain.gain.cancelScheduledValues(audio.currentTime)
+      musicGain.gain.linearRampToValueAtTime(want, audio.currentTime + 0.25)
+    }
+    return
+  }
+  if (currentBed && id !== 'boss' && audio.currentTime - bedStarted < 1.2) {
     return
   }
   silenceBed()
   currentBed = id
+  bedStarted = audio.currentTime
   generation += 1
   const gen = generation
   const bus = audio.createGain()
@@ -510,13 +524,17 @@ export function playBed(id: BedId, pref: AudioPref, host: AudioHost | null = typ
     padOscs.push(osc)
   }
   const line = PHRASE[id]
-  let step = 0
-  phraseVoice(audio, filter, line[0]!, gen)
+  let stepIndex = 0
+  let nextAt = audio.currentTime + 0.2
   const handle = setInterval(() => {
     if (gen !== generation) return
-    step = (step + 1) % line.length
-    phraseVoice(audio, filter, line[step]!, gen)
-  }, 1700)
+    const clock = audio.currentTime
+    const beat = advanceMelody(clock, nextAt)
+    nextAt = beat.nextAt
+    if (!beat.play) return
+    phraseVoice(audio, filter, line[stepIndex % line.length]!, gen)
+    stepIndex += 1
+  }, 200)
   timers += 1
   stopPhrase = () => {
     clearInterval(handle)

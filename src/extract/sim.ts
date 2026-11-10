@@ -1050,8 +1050,8 @@ function keepInsured(save: ExtractSave, run: Run): void {
 }
 
 function float(run: Run, text: string, dim = false): void {
-  const once = text === t('room.shut') || text === t('hud.bagFull')
-  if (once && run.floats.some((item) => item.text === text && item.life > 0.35)) return
+  const once = text === t('room.shut') || text === t('hud.bagFull') || text === t('room.locked') || text === t('room.passage') || text === t('room.cache')
+  if (once && run.floats.some((item) => item.text === text)) return
   run.floats.push({ text, life: 0.8, dim })
   run.floats = run.floats.slice(-6)
 }
@@ -1882,7 +1882,7 @@ function tickSpecial(run: Run, foe: Foe, h: number): void {
     return
   }
   if (foe.wind > 0) {
-    foe.wind -= h
+    foe.wind = Math.max(0, foe.wind - h)
     if (foe.wind <= 0) resolveSpecial(run, foe)
     pinFoe(foe)
     return
@@ -2115,7 +2115,7 @@ function tickFoes(run: Run, h: number): void {
       continue
     }
     if (foe.wind > 0) {
-      foe.wind -= h
+      foe.wind = Math.max(0, foe.wind - h)
       if (foe.wind <= 0) resolveFoe(run, foe, dist)
       pinFoe(foe)
       if (foe.kind === 'boss') syncCentipede(foe)

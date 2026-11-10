@@ -1090,6 +1090,7 @@ let sheetHold = false
 let boomHeard = 0
 let fuseHeard = 0
 let last = performance.now()
+let simBank = 0
 let sinceSave = 0
 let workEma = 8
 const hudCache = new Map<string, string>()
@@ -1142,8 +1143,12 @@ function frame(now: number): void {
   }
   try {
     const workStart = performance.now()
-    const dt = Math.min(0.05, (now - last) / 1000)
+    const raw = (now - last) / 1000
     last = now
+    const frameDt = Number.isFinite(raw) && raw > 0 ? Math.min(raw, 0.05) : 1 / 60
+    simBank = Math.min(0.05, simBank + frameDt)
+    const dt = simBank >= 1 / 60 ? 1 / 60 : 0
+    if (dt > 0) simBank -= dt
     if (save.run && !outcome && hudOpen && fieldVisible()) {
       paint()
     } else if (save.run && !outcome && fieldVisible()) {
@@ -1156,7 +1161,7 @@ function frame(now: number): void {
         else if (save.coins < purse) playCue('world.buy', mixPref())
       }
       const cdBefore = save.run.attackCd
-      const next = step(save.run, input, dt)
+      const next = dt > 0 ? step(save.run, input, dt) : 'play'
       const ping = save.run?.boomPing ?? 0
       if (ping !== boomHeard) {
         boomHeard = ping
@@ -1493,7 +1498,8 @@ function paint(): void {
   const veinNear = propNear == null && !near ? nearestVein(run) : null
   const stairsReady = onStairs(run) && stairsOpen(run)
   open.hidden = !near && propNear == null && veinNear == null && !stairsReady
-  if (!open.hidden) open.textContent = stairsReady ? t('stairs.down') : propNear?.kind === 'barrel' ? t('hud.fuse') : veinNear ? t('hud.mine') : t('hud.open')
+  const needKey = propNear?.kind === 'chest' && propNear.lock === 'key' && (run.keys ?? 0) <= 0
+  if (!open.hidden) open.textContent = stairsReady ? t('stairs.down') : needKey ? t('hud.needKey') : propNear?.kind === 'barrel' ? t('hud.fuse') : veinNear ? t('hud.mine') : propNear?.kind === 'chest' ? t('hud.open') : t('hud.open')
   const prize = claimTarget(run)
   const shrine = soulNear(run)
   const claim = document.querySelector<HTMLButtonElement>('#claim')!

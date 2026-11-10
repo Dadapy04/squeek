@@ -97,6 +97,7 @@ export const DICT = {
   'hud.bandage': { id: 'Perban {n}', en: 'Bandage {n}' },
   'hud.tonic': { id: 'Tonik {n}', en: 'Tonic {n}' },
   'hud.open': { id: 'Buka', en: 'Open' },
+  'hud.needKey': { id: 'Butuh kunci', en: 'Needs key' },
   'hud.mine': { id: 'Gali', en: 'Mine' },
   'hud.claimSoul': { id: 'Ambil Pelebur Jiwa', en: 'Take Soul Melter' },
   'hud.bagFull': { id: 'Tas penuh', en: 'Bag full' },

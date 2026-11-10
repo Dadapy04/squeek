@@ -1305,8 +1305,8 @@ function placeMarked(
   const p = at(x, y)
   blitMotif(ctx, id, p.x, p.y, scale)
   if (spark) sparkle(ctx, p.x, p.y, scale, run.age, x + y)
-  if (Math.hypot(run.x - x, run.y - y) < 42) {
-    const name = mapLabel(id.startsWith('vein') ? 'vein' : id, id.replace('vein-', ''), id === 'vein-big', id === 'chest-open')
+  if (id !== 'chest' && id !== 'chest-open' && Math.hypot(run.x - x, run.y - y) < 42) {
+    const name = mapLabel(id.startsWith('vein') ? 'vein' : id, id.replace('vein-', ''), id === 'vein-big', false)
     ctx.save()
     ctx.font = '12px Courier New, monospace'
     ctx.textAlign = 'center'
