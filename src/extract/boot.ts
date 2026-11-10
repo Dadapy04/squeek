@@ -17,7 +17,7 @@ import { loadExtract, writeExtract } from './save.ts'
 import { ITEM_NAME, RARITY_COLOR, RARITY_NAME, STASH_SLOTS, type CoinRarity, type ItemUnit } from './coins.ts'
 import { bladeDisplay, bossDisplay, depthPlan } from './depths.ts'
 import { currentLocale, onLocale, setLocale, t, type MsgKey } from './i18n.ts'
-import { armRun, mountOnline, noteDeath, noteExtract, refreshOnline, takeRunSeed, walletAct, walletLive } from './online.ts'
+import { armRun, mountOnline, noteDeath, noteExtract, noteRunBoundary, offerSessionRestore, refreshOnline, takeRunSeed, walletAct, walletLive, walletSettled } from './online.ts'
 import { reportFromRun } from './run-report.ts'
 import { roomAt } from './dungeon.ts'
 import { markSeen, replayTutorial, skipTutorial, tipAnchor, tipToShow, type TipId, type TutorialWorld } from './tutorial.ts'
@@ -188,6 +188,11 @@ document.querySelector<HTMLButtonElement>('#titleFull')!.addEventListener('point
 deployBtn.addEventListener('click', () => { void beginDeploy() })
 async function beginDeploy(): Promise<void> {
   if (deployBtn.disabled) return
+  if (!walletSettled()) {
+    deployError.hidden = false
+    deployError.textContent = t('online.checking')
+    return
+  }
   deployBtn.disabled = true
   requestStageFullscreen()
   if (save.run) {
@@ -1345,6 +1350,7 @@ show(outcome ? 'result' : save.run ? 'field' : 'base')
 mountOnline({
   getSave: () => save,
   setSave: (next) => {
+    if (save.run && !next.run) return
     save = next
     writeExtract(storage, save)
     outcome = null
@@ -1994,7 +2000,9 @@ function stashDetail(): HTMLElement {
   const name = ITEM_NAME[focus.kind]
   const unit = save.stash.find((stack) => stack.kind === focus.kind)?.units?.find((item) => focus.coins == null || item.coins === focus.coins)
   const color = unit ? RARITY_COLOR[unit.rarity] : '#c4b8a4'
-  box.innerHTML = `<b>${name}</b><p style="color:${color}">${unit ? `${RARITY_NAME[unit.rarity]} · ${unit.coins} ${t('coin.word')}` : t('bag.noCoins')}</p><p>${bagUse(focus.kind)}</p>`
+  const priced = unit && focus.kind !== 'sword'
+  const price = priced && unit ? `<p style="color:${color}">${RARITY_NAME[unit.rarity]} · ${unit.coins} ${t('coin.word')}</p>` : ''
+  box.innerHTML = `<b>${name}</b>${price}<p>${bagUse(focus.kind)}</p>`
   if (focus.kind !== 'sword' || count(save.stash, 'sword') - count(picks, 'sword') > 0) {
     const button = document.createElement('button')
     button.type = 'button'
@@ -2140,6 +2148,7 @@ function show(which: 'base' | 'field' | 'result'): void {
   document.body.classList.toggle('playing', which === 'field')
   if (which !== 'field') window.scrollTo(0, 0)
   if (which === 'field' && location.hash !== '#galeri') paint()
+  if (which === 'base' || which === 'field') noteRunBoundary()
 }
 
 function fieldVisible(): boolean {
@@ -2262,6 +2271,7 @@ declare global {
       chests: () => string
       loot: () => string
       reveal: () => string
+      offerSessionRestore: (address: string) => 'applied' | 'deferred' | 'ignored'
       pose: (depth: number, kind: string) => { depth: number; theme: string; room: string; zone: string } | null
       mapSheet: () => void
       boomSheet: () => void
@@ -2271,6 +2281,7 @@ declare global {
 }
 window.__npcsExtract = {
   save: () => save,
+  offerSessionRestore: (address: string) => offerSessionRestore(address),
   pose: (depth: number, kind: string) => {
     if (!save.run) deploy(save, [{ kind: 'sword', n: 1 }])
     const run = save.run

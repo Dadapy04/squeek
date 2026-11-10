@@ -1,4 +1,5 @@
 import { apiUrl, onlineEnabled, phoneLayout, walletButtons, walletConnectId } from './online-flag.ts'
+import { freshGate, reduceGate, setRunOpen, type GateState } from './account-gate.ts'
 import { nameTagLabel, needsNickname, paintBasePortrait, setNameTag, shortAddress } from './name-tag.ts'
 import type { RunReport } from './run-report.ts'
 import { EXTRACT_SAVE_KEY, loadExtract, setPersistSuspended } from './save.ts'
@@ -20,6 +21,9 @@ interface Hooks {
 }
 
 let hooks: Hooks | null = null
+let gate: GateState = freshGate()
+let heldProvider: Eip1193 | null = null
+let deferredWallet: { session: Session; state: unknown } | null = null
 let guestBlob: string | null = null
 let runToken: string | null = null
 
@@ -171,8 +175,68 @@ function paintWalletChrome(): void {
   show('walletWc', buttons.walletConnect)
 }
 
-async function signIn(provider: Eip1193): Promise<void> {
+function inRun(): boolean {
+  return Boolean(hooks?.getSave().run)
+}
+
+export function walletSettled(): boolean {
+  return gate.settled
+}
+
+export function noteRunBoundary(): void {
+  const result = setRunOpen(gate, inRun())
+  gate = result.state
+  if (!inRun() && heldProvider) {
+    const provider = heldProvider
+    heldProvider = null
+    void signIn(provider, false)
+    return
+  }
+  if (result.apply?.presence === 'wallet' && deferredWallet) {
+    const held = deferredWallet
+    deferredWallet = null
+    commitWallet(held.session, held.state, true)
+  }
+}
+
+/** A late WalletConnect restore. Returns deferred when a run is on screen. */
+export function offerSessionRestore(address: string): 'applied' | 'deferred' | 'ignored' {
+  const running = inRun()
+  const result = reduceGate({ ...gate, inRun: running }, { type: 'restored', address, name: null })
+  gate = result.state
+  if (running && gate.deferred) return 'deferred'
+  if (result.apply) return 'applied'
+  return 'ignored'
+}
+
+function paintDepartLock(): void {
+  const button = document.getElementById('deploy') as HTMLButtonElement | null
+  const note = document.getElementById('deployError')
+  if (!button) return
+  if (!gate.settled) {
+    button.disabled = true
+    button.dataset.checking = '1'
+    if (note) {
+      note.hidden = false
+      note.textContent = t('online.checking')
+    }
+    return
+  }
+  if (button.dataset.checking) {
+    button.disabled = false
+    delete button.dataset.checking
+    if (note && note.textContent === t('online.checking')) note.hidden = true
+  }
+}
+
+async function signIn(provider: Eip1193, explicit: boolean): Promise<void> {
   if (!hooks) return
+  if (inRun()) {
+    heldProvider = provider
+    const result = reduceGate({ ...gate, inRun: true }, { type: 'restored', address: 'pending', name: null })
+    gate = result.state
+    return
+  }
   const accounts = await provider.request({ method: 'eth_requestAccounts' }) as string[]
   const address = accounts[0]
   if (!address) return
@@ -205,14 +269,29 @@ async function signIn(provider: Eip1193): Promise<void> {
     return
   }
   const body = await account.json() as { state: unknown; abandoned?: boolean }
-  guestBlob = hooks.storage?.getItem(EXTRACT_SAVE_KEY) ?? ''
+  const result = reduceGate({ ...gate, inRun: inRun() }, explicit
+    ? { type: 'explicit-connect', address: session.address, name: session.name }
+    : { type: 'restored', address: session.address, name: session.name })
+  gate = result.state
+  if (!result.apply) {
+    deferredWallet = { session, state: body.state }
+    return
+  }
+  commitWallet(session, body.state, true)
+  if (body.abandoned) showAccountToast(t('online.abandoned'))
+}
+
+function commitWallet(session: Session, state: unknown, toast: boolean): void {
+  if (!hooks) return
+  writeSession(hooks.storage, session)
+  guestBlob = hooks.storage?.getItem(EXTRACT_SAVE_KEY) ?? guestBlob ?? ''
   setPersistSuspended(true)
-  hooks.setSave(saveFromBlob(JSON.stringify(body.state)))
+  hooks.setSave(saveFromBlob(JSON.stringify(state)))
   const name = document.getElementById('walletName') as HTMLInputElement | null
   if (name) name.value = session.name ?? ''
   refreshOnline()
   if (needsNickname(session.name)) name?.focus()
-  showAccountToast(body.abandoned ? t('online.abandoned') : t('online.toastOn'))
+  if (toast) showAccountToast(t('online.toastOn'))
 }
 
 async function connectInjected(): Promise<void> {
@@ -222,7 +301,7 @@ async function connectInjected(): Promise<void> {
     return
   }
   try {
-    await signIn(provider)
+    await signIn(provider, true)
   } catch {
     setText('cloudStatus', t('online.cancelled'))
   }
@@ -251,15 +330,87 @@ async function connectWalletConnect(): Promise<void> {
         icons: [`${origin}/squeek/favicon.svg`],
       },
     })
+    watchProvider(provider)
     await provider.connect()
-    await signIn(provider as unknown as Eip1193)
+    await signIn(provider, true)
   } catch {
     setText('cloudStatus', t('online.cancelled'))
   }
 }
 
+function watchProvider(provider: unknown): void {
+  const live = provider as { on?: (event: 'disconnect' | 'connect', listener: () => void) => void; accounts?: string[] }
+  live.on?.('disconnect', () => {
+    const result = reduceGate({ ...gate, inRun: inRun() }, { type: 'dropped' })
+    gate = result.state
+  })
+  live.on?.('connect', () => {
+    const address = live.accounts?.[0]
+    if (!address || !hooks) return
+    const session = readSession(hooks.storage)
+    const result = reduceGate({ ...gate, inRun: inRun() }, { type: 'reconnected', address, name: session?.name ?? null })
+    gate = result.state
+  })
+}
+
+async function settleWallet(): Promise<void> {
+  paintDepartLock()
+  try {
+    const session = hooks ? readSession(hooks.storage) : null
+    if (session) {
+      const account = await api('/v1/account')
+      if (account.ok) {
+        const body = await account.json() as { state: unknown; abandoned?: boolean }
+        const result = reduceGate({ ...gate, inRun: inRun() }, { type: 'restored', address: session.address, name: session.name })
+        gate = result.state
+        if (result.apply) commitWallet(session, body.state, false)
+        else deferredWallet = { session, state: body.state }
+        if (body.abandoned && result.apply) showAccountToast(t('online.abandoned'))
+      } else if (account.status === 401 && hooks) {
+        writeSession(hooks.storage, null)
+      }
+    }
+    await Promise.race([
+      probeWalletConnect(),
+      new Promise((resolve) => setTimeout(resolve, 4000)),
+    ])
+  } catch { /* a failed check leaves the guest save in place */ }
+  const done = reduceGate(gate, { type: 'settled' })
+  gate = done.state
+  paintDepartLock()
+  refreshOnline()
+}
+
+async function probeWalletConnect(): Promise<void> {
+  const projectId = walletConnectId()
+  if (!projectId || !hooks) return
+  const mod = await import('@walletconnect/ethereum-provider')
+  const origin = typeof location !== 'undefined' ? location.origin : 'https://dadapy04.github.io'
+  const provider = await mod.EthereumProvider.init({
+    projectId,
+    optionalChains: [1],
+    showQrModal: false,
+    methods: ['personal_sign', 'eth_requestAccounts'],
+    events: ['accountsChanged', 'chainChanged'],
+    rpcMap: { 1: 'https://cloudflare-eth.com' },
+    metadata: {
+      name: 'Squeek',
+      description: 'Squeek extraction survival',
+      url: origin,
+      icons: [`${origin}/squeek/favicon.svg`],
+    },
+  })
+  watchProvider(provider)
+  const address = provider.accounts?.[0]
+  if (!address) return
+  const session = readSession(hooks.storage)
+  if (!session || session.address.toLowerCase() !== address.toLowerCase()) return
+  const result = reduceGate({ ...gate, inRun: inRun() }, { type: 'reconnected', address: session.address, name: session.name })
+  gate = result.state
+}
+
 async function disconnect(): Promise<void> {
-  if (!hooks) return
+  if (!hooks || inRun()) return
   if (runToken) await noteDeath(1)
   try { await api('/v1/auth/logout', { method: 'POST' }) } catch { /* local sign-out still happens */ }
   const kept = guestBlob
@@ -479,6 +630,7 @@ export function mountOnline(next: Hooks): void {
   if (all) all.dataset.on = '1'
   window.addEventListener('pagehide', () => { leaveRun() })
   void recoverStoredRun()
+  void settleWallet()
   refreshOnline()
 }
 
