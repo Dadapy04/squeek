@@ -11,11 +11,11 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <meta name="theme-color" content="#1a140f" />
     <title>Squeek: Extraction Survival</title>
-    <script type="module" crossorigin src="./assets/main-BFLJFD1n.js"></script>
+    <script type="module" crossorigin src="./assets/main-DB7mf4gQ.js"></script>
     <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
     <link rel="modulepreload" crossorigin href="./assets/wheel-BKW0ZpM6.js">
     <link rel="modulepreload" crossorigin href="./assets/preload-helper-DclECHGd.js">
-    <link rel="stylesheet" crossorigin href="./assets/main-DmxlB0Br.css">
+    <link rel="stylesheet" crossorigin href="./assets/main-EWC9ACIH.css">
   </head>
   <body data-drive="normal" class="title">
     <div id="bootSplash" role="status">Squeek</div>
@@ -39,13 +39,14 @@
         </div>
         <div id="onlineBox" hidden>
           <p id="onlineStatus"></p>
-          <p class="tip" data-i18n="online.sign">Sign in with a signature. No transaction is sent.</p>
+          <p id="onlineSoon" class="tip" hidden data-i18n="online.soon">Mobile wallet login coming soon</p>
+          <p id="onlineSign" class="tip" data-i18n="online.sign">Sign in with a signature. No transaction is sent.</p>
           <div class="row">
             <button id="walletInject" type="button" data-i18n="online.connect">Connect wallet</button>
             <button id="walletWc" type="button" data-i18n="online.walletConnect">WalletConnect</button>
             <button id="walletOut" type="button" data-i18n="online.disconnect">Disconnect</button>
           </div>
-          <label class="mix"><span data-i18n="online.nickname">Nickname</span><input id="walletName" maxlength="16" autocomplete="off" /></label>
+          <label id="walletNameLabel" class="mix"><span data-i18n="online.nickname">Nickname</span><input id="walletName" maxlength="16" autocomplete="off" /></label>
           <button id="walletNameSave" type="button" data-i18n="online.saveName">Save name</button>
           <p id="cloudStatus"></p>
           <div class="row">
