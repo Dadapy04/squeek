@@ -1,4 +1,4 @@
-import { apiUrl, onlineEnabled, phoneLayout, walletConnectId, walletOffer } from './online-flag.ts'
+import { apiUrl, onlineEnabled, phoneLayout, walletButtons, walletConnectId } from './online-flag.ts'
 import type { RunReport } from './run-report.ts'
 import { EXTRACT_SAVE_KEY, loadExtract, onSaveWrote } from './save.ts'
 import { decideSync, hasLocalProgress } from './sync-choice.ts'
@@ -223,15 +223,13 @@ function show(id: string, on: boolean): void {
 }
 
 function paintWalletChrome(): void {
-  const session = hooks ? readSession(hooks.storage) : null
-  const soon = walletOffer({ injected: injected() != null, mobile: phoneLike() }) === 'soon' && !session
-  show('onlineSoon', soon)
-  show('onlineSign', !soon)
-  show('walletInject', !soon)
-  show('walletWc', !soon && walletConnectId() !== '')
-  show('walletNameLabel', !soon)
-  show('walletNameSave', !soon)
-  show('walletOut', !soon)
+  const buttons = walletButtons({
+    injected: injected() != null,
+    mobile: phoneLike(),
+    walletConnect: walletConnectId() !== '',
+  })
+  show('walletInject', buttons.injected)
+  show('walletWc', buttons.walletConnect)
 }
 
 async function signIn(provider: Eip1193): Promise<void> {
@@ -274,17 +272,19 @@ async function connectWalletConnect(): Promise<void> {
   }
   try {
     const mod = await import('@walletconnect/ethereum-provider')
+    const origin = typeof location !== 'undefined' ? location.origin : 'https://dadapy04.github.io'
     const provider = await mod.EthereumProvider.init({
       projectId,
       optionalChains: [1],
       showQrModal: true,
-      methods: ['personal_sign'],
+      methods: ['personal_sign', 'eth_requestAccounts'],
+      events: ['accountsChanged', 'chainChanged'],
       rpcMap: { 1: 'https://cloudflare-eth.com' },
       metadata: {
         name: 'Squeek',
         description: 'Squeek extraction survival',
-        url: typeof location !== 'undefined' ? location.origin : 'https://dadapy04.github.io',
-        icons: [],
+        url: origin,
+        icons: [`${origin}/squeek/favicon.svg`],
       },
     })
     await provider.connect()

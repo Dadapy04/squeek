@@ -21,8 +21,10 @@ export function phoneLayout(input: { width: number; height: number; coarse: bool
   return input.width <= 900 && input.height <= 520
 }
 
-/** Phones with no injected wallet get a coming-soon note. Desktop still offers Connect wallet. */
-export function walletOffer(input: { injected: boolean; mobile: boolean }): 'connect' | 'soon' {
-  if (input.mobile && !input.injected) return 'soon'
-  return 'connect'
+/** Desktop always offers the injected button. A phone shows it only when a wallet is already there. */
+export function walletButtons(input: { injected: boolean; mobile: boolean; walletConnect: boolean }): { injected: boolean; walletConnect: boolean } {
+  return {
+    injected: input.injected || !input.mobile,
+    walletConnect: input.walletConnect,
+  }
 }

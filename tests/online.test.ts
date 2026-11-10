@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { onlineEnabled, phoneLayout, walletOffer } from '../src/extract/online-flag.ts'
+import { onlineEnabled, phoneLayout, walletButtons } from '../src/extract/online-flag.ts'
 import { reportFromRun } from '../src/extract/run-report.ts'
 import { decideSync, hasLocalProgress } from '../src/extract/sync-choice.ts'
 import { deploy, freshSave, freshValue } from '../src/extract/sim.ts'
@@ -9,10 +9,9 @@ describe('online flag and cloud choice', () => {
     expect(onlineEnabled('')).toBe(false)
     expect(onlineEnabled('   ')).toBe(false)
     expect(onlineEnabled('https://squeek.example')).toBe(true)
-    expect(walletOffer({ injected: true, mobile: false })).toBe('connect')
-    expect(walletOffer({ injected: false, mobile: true })).toBe('soon')
-    expect(walletOffer({ injected: true, mobile: true })).toBe('connect')
-    expect(walletOffer({ injected: false, mobile: false })).toBe('connect')
+    expect(walletButtons({ injected: false, mobile: true, walletConnect: true })).toEqual({ injected: false, walletConnect: true })
+    expect(walletButtons({ injected: false, mobile: false, walletConnect: true })).toEqual({ injected: true, walletConnect: true })
+    expect(walletButtons({ injected: true, mobile: true, walletConnect: true })).toEqual({ injected: true, walletConnect: true })
     expect(phoneLayout({ width: 844, height: 390, coarse: false, ua: 'Mozilla/5.0' })).toBe(true)
     expect(phoneLayout({ width: 1280, height: 800, coarse: false, ua: 'Mozilla/5.0' })).toBe(false)
     expect(phoneLayout({ width: 1280, height: 800, coarse: false, ua: 'Mozilla/5.0 (iPhone)' })).toBe(true)

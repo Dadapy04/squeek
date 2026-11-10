@@ -102,7 +102,7 @@ Injected wallets (MetaMask, Rabby, Bitget in a desktop browser) do not need this
 2. Create a project. Copy the project id.
 3. In the project settings, allow the origin `https://dadapy04.github.io`.
 
-You will paste the id in the next step. Leave it blank if you only care about desktop wallets. The WalletConnect button then says it is not configured, and the rest of the game still works.
+The public `.env.production` already contains the project id `cb0884d85fa7d8ca7c9ed90ac2cc4fe5`. The Reown allowlist for that project is `https://dadapy04.github.io`. A new id, if you ever replace it, goes in `.env.production` as `VITE_WALLETCONNECT_PROJECT_ID`.
 
 ## 8. Point the game at the API
 
@@ -122,7 +122,7 @@ VITE_WALLETCONNECT_PROJECT_ID=
 
 Put the WalletConnect id on the second line if you have one. No quotes. No slash at the end of the API address.
 
-`.env.local` is not committed. The public site build reads the committed `.env.production`, which sets `VITE_API_URL` to `https://squeek-api.dadapy04.workers.dev`. WalletConnect stays unset there, so a phone with no injected wallet shows “Mobile wallet login coming soon” and guest play still works.
+`.env.local` is not committed. The public site build reads the committed `.env.production`, which sets `VITE_API_URL` to `https://squeek-api.dadapy04.workers.dev` and `VITE_WALLETCONNECT_PROJECT_ID` to the public Reown project id. Phones open WalletConnect and jump into a wallet app. Desktop browsers without an extension get the QR code. Guest play still works if you never connect. The Reown allowlist for that project is `https://dadapy04.github.io`.
 
 To try it on your laptop:
 
@@ -135,7 +135,7 @@ Open http://127.0.0.1:47331 . On the base screen you should see Connect wallet. 
 
 ## 9. Publish a Pages build
 
-`npm run build` in the game folder picks up `.env.production`, so the public bundle already knows the Worker URL. Publish `dist` plus an empty `.nojekyll` to the `gh-pages` branch. A phone still cannot connect until a WalletConnect project id is added to that file and the site is built again.
+`npm run build` in the game folder picks up `.env.production`. Publish `dist` plus an empty `.nojekyll` to the `gh-pages` branch.
 
 ## What the player can do
 
