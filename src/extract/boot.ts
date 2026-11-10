@@ -279,12 +279,6 @@ document.querySelector('#bagDropAll')!.addEventListener('click', () => dropBag(9
 document.querySelector('#bagUse')!.addEventListener('click', () => useBag())
 document.querySelector('#openShop')!.addEventListener('click', () => openPanel('btn.workshop', 'shop.leadRun'))
 document.querySelector('#openWorkshop')!.addEventListener('click', () => openWorkshop())
-document.querySelector('#bagUpgrade')?.addEventListener('click', () => {
-  const result = upgradeBag(save)
-  const note = document.querySelector('#merchantNote')
-  if (note) note.textContent = result.ok ? result.note : result.reason
-  if (result.ok) { writeExtract(storage, save); renderBase() }
-})
 document.querySelector('#buyBandage')?.addEventListener('click', () => buyFromMerchant('bandage'))
 document.querySelector('#buyP3k')?.addEventListener('click', () => buyFromMerchant('p3k'))
 document.querySelector('#sellCommon')?.addEventListener('click', () => {
@@ -645,7 +639,7 @@ function useBag(): void {
   paintBag()
 }
 let workshopAction: WorkshopAction | null = null
-let upgradePick: 'sword' | 'shield' | null = null
+let upgradePick: 'sword' | 'shield' | 'bag' | null = null
 function openWorkshop(): void {
   workshopAction = null
   document.querySelector<HTMLElement>('#workshopConfirm')!.hidden = true
@@ -696,6 +690,30 @@ function paintWorkshop(): void {
       })
       upgrades.append(button)
     }
+    const bag = view.bag
+    const bagBtn = document.createElement('button')
+    bagBtn.type = 'button'
+    bagBtn.className = 'shop-act'
+    bagBtn.disabled = !bag.enabled
+    bagBtn.dataset.upgrade = 'bag'
+    const bagText = document.createElement('span')
+    bagText.className = 'shop-copy'
+    bagText.textContent = `${bag.title}. ${bag.detail}`
+    if (!bag.enabled && bag.reason) {
+      const why = document.createElement('small')
+      why.textContent = bag.reason
+      bagText.append(document.createElement('br'), why)
+    }
+    bagBtn.append(bagText)
+    bagBtn.addEventListener('click', () => {
+      if (!bag.enabled || bag.cost == null) return
+      workshopAction = null
+      upgradePick = 'bag'
+      document.querySelector('#workshopAsk')!.textContent = t('shop.askUpgrade', { cost: bag.cost, next: bag.detail })
+      document.querySelector('#workshopYes')!.textContent = t('shop.yesUpgrade')
+      document.querySelector<HTMLElement>('#workshopConfirm')!.hidden = false
+    })
+    upgrades.append(bagBtn)
   }
   const box = document.querySelector('#workshopActions')!
   box.replaceChildren()
@@ -731,6 +749,20 @@ function paintWorkshop(): void {
   }
 }
 function confirmWorkshop(): void {
+  if (upgradePick === 'bag') {
+    const result = upgradeBag(save)
+    upgradePick = null
+    document.querySelector<HTMLElement>('#workshopConfirm')!.hidden = true
+    paintWorkshop()
+    const note = document.querySelector('#workshopNote')!
+    note.textContent = result.ok ? result.note : result.reason
+    if (result.ok) {
+      writeExtract(storage, save)
+      renderBase()
+      paintWorkshop()
+    }
+    return
+  }
   if (upgradePick) {
     const result = upgradeGear(save, upgradePick)
     upgradePick = null

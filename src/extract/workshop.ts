@@ -1,6 +1,6 @@
-import { shieldMaxFor, swordBonusPct, swordDamage, upgradeCost, upgradeOre } from './economy.ts'
+import { bagSlotsOf, isRichOre, nextBagUpgrade, shieldMaxFor, swordBonusPct, swordDamage, upgradeCost, upgradeOre, BAG_CAP } from './economy.ts'
 import { t } from './i18n.ts'
-import { addUnits, count, spendStack, type ExtractSave } from './sim.ts'
+import { addUnits, count, repairStack, spendStack, type ExtractSave } from './sim.ts'
 
 export const MEND_SCRAP = 1
 export const FORGE_SCRAP = 3
@@ -28,6 +28,18 @@ export interface UpgradeCard {
   reason: string
 }
 
+export interface BagOffer {
+  slots: number
+  cap: number
+  next: number | null
+  cost: number | null
+  ore: number
+  enabled: boolean
+  reason: string
+  title: string
+  detail: string
+}
+
 export interface WorkshopView {
   duringRun: boolean
   shield: number | null
@@ -38,6 +50,7 @@ export interface WorkshopView {
   coins: number
   offers: WorkshopOffer[]
   upgrades: UpgradeCard[]
+  bag: BagOffer
 }
 
 export type WorkshopResult = { ok: true; shield: number; note: string } | { ok: false; reason: string }
@@ -99,6 +112,39 @@ export function workshopView(save: ExtractSave): WorkshopView {
       offer('forge', t('shop.forge'), FORGE_SCRAP, FORGE_ORE, forgeReason),
     ],
     upgrades: [swordCard(save, run), shieldCard(save, run, cap)],
+    bag: bagOffer(save, run),
+  }
+}
+
+function richOreCount(save: ExtractSave): number {
+  let n = 0
+  for (const stack of save.stash) {
+    if (stack.kind !== 'ore') continue
+    for (const unit of repairStack(stack)) if (isRichOre(unit)) n += 1
+  }
+  return n
+}
+
+function bagOffer(save: ExtractSave, run: string): BagOffer {
+  const slots = bagSlotsOf(save.bagSlots)
+  const next = nextBagUpgrade(slots)
+  const title = t('shop.bagTitle')
+  if (!next) {
+    return { slots, cap: BAG_CAP, next: null, cost: null, ore: 0, enabled: false, reason: t('err.bag20'), title, detail: t('shop.bagFull', { n: slots, cap: BAG_CAP }) }
+  }
+  const have = richOreCount(save)
+  const reason = run || (next.ore > 0 && have < next.ore ? t('shop.bagOre') : save.coins < next.cost ? t('shop.poor') : '')
+  const oreNote = next.ore > 0 ? ` + ${next.ore} ${t('shop.bagMetal')}` : ''
+  return {
+    slots,
+    cap: BAG_CAP,
+    next: next.slots,
+    cost: next.cost,
+    ore: next.ore,
+    enabled: reason === '',
+    reason,
+    title,
+    detail: `${t('shop.bagLine', { n: slots, cap: BAG_CAP, next: next.slots, cost: next.cost })}${oreNote}`,
   }
 }
 

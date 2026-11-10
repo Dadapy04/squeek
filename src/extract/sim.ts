@@ -1,7 +1,7 @@
 import { coinsFor, hashText, mintUnit, mixSeed, readUnit, type CoinRarity, type ItemOrigin, type ItemUnit } from './coins.ts'
 import { currentLocale, t, type MsgKey } from './i18n.ts'
 import { BOSS_RAGE_SEC, DEPTH_CAP, DEPTHS, bladeDisplay, bossChip, bossDisplay, bossPattern, bossPhaseOf, depthPlan, foeChip, frontGuarded, GUARD_FACTOR, makeBlade, rageMul, recommendDamage, type Blade, type Breed } from './depths.ts'
-import { bagSlotsOf, blockArc, MERCHANT, nextBagUpgrade, shieldMaxFor, swordBonusPct, swordDamage, upgradeCost, upgradeOre, type MerchantKind } from './economy.ts'
+import { bagSlotsOf, blockArc, isRichOre, MERCHANT, nextBagUpgrade, shieldMaxFor, swordBonusPct, swordDamage, upgradeCost, upgradeOre, type MerchantKind } from './economy.ts'
 import { SPEAR_ACTIVE, SPEAR_ARC, SPEAR_TOTAL, SPEAR_WIND, critLands, rollSpear, spearBossBonus, spearPower, spearReach, type Spear } from './spear.ts'
 import { doorPad, generateFloor, layoutShift, nearPad, oreValue, roomAt, spineRoom, type FloorChart, type PropNode, type RoomNode, type SpawnNode, type VeinNode } from './dungeon.ts'
 
@@ -607,11 +607,28 @@ export function upgradeGear(save: ExtractSave, which: 'sword' | 'shield'): { ok:
   return { ok: true, level: next, note: t('shop.shieldDone', { lv: next, cap: shieldMaxFor(next) }) }
 }
 
+function takeRichOre(save: ExtractSave): boolean {
+  for (const stack of [...save.stash]) {
+    if (stack.kind !== 'ore') continue
+    const units = repairStack(stack)
+    const index = units.findIndex((unit) => isRichOre(unit))
+    if (index < 0) continue
+    units.splice(index, 1)
+    stack.units = units
+    stack.n = units.length
+    if (stack.n <= 0) save.stash.splice(save.stash.indexOf(stack), 1)
+    return true
+  }
+  return false
+}
+
 export function upgradeBag(save: ExtractSave): { ok: true; slots: number; note: string } | { ok: false; reason: string } {
   if (save.run) return { ok: false, reason: t('err.runShop') }
   const next = nextBagUpgrade(save.bagSlots)
   if (!next) return { ok: false, reason: t('err.bag20') }
+  if (next.ore > 0 && !save.stash.some((stack) => stack.kind === 'ore' && repairStack(stack).some((unit) => isRichOre(unit)))) return { ok: false, reason: t('shop.bagOre') }
   if (save.coins < next.cost) return { ok: false, reason: t('shop.poor') }
+  if (next.ore > 0 && !takeRichOre(save)) return { ok: false, reason: t('shop.bagOre') }
   save.coins -= next.cost
   save.bagSlots = next.slots
   return { ok: true, slots: next.slots, note: t('note.bagSlots', { n: next.slots }) }
@@ -2397,7 +2414,7 @@ function grantVein(run: Run, vein: VeinNode): void {
       x: 0,
       y: 0,
       ore: vein.ore,
-      unit: { rarity: vein.rarity, coins, origin: 'loot' },
+      unit: { rarity: vein.rarity, coins, origin: 'loot', metal: vein.ore },
     }, vein.x, vein.y, i, need)
   }
 }

@@ -3,7 +3,7 @@ import { setLocale } from '../src/extract/i18n.ts'
 
 setLocale('id')
 import { mintUnit } from '../src/extract/coins.ts'
-import { BAG_UPGRADES, MERCHANT, UPGRADE_COSTS, shieldMaxFor, swordBonusPct, swordDamage, swordReadout, upgradeCost } from '../src/extract/economy.ts'
+import { MERCHANT, UPGRADE_COSTS, shieldMaxFor, swordBonusPct, swordDamage, swordReadout, upgradeCost } from '../src/extract/economy.ts'
 import { EXTRACT_SAVE_KEY, loadExtract, writeExtract } from '../src/extract/save.ts'
 import {
   buyGoods,
@@ -83,11 +83,9 @@ describe('koin wallet, bengkel, and asuransi', () => {
     expect(save.coins).toBe(100 - MERCHANT.bandage.buy - MERCHANT.p3k.buy)
     save.coins = 0
     expect(buyGoods(save, 'p3k')).toMatchObject({ ok: false, reason: 'Koin kurang.' })
-    save.coins = 5000
-    expect(upgradeBag(save)).toMatchObject({ ok: true, slots: 16 })
-    expect(upgradeBag(save)).toMatchObject({ ok: true, slots: 20 })
-    expect(upgradeBag(save).ok).toBe(false)
-    expect(BAG_UPGRADES.map((step) => step.cost)).toEqual([750, 1500])
+    save.coins = 1000
+    expect(upgradeBag(save)).toMatchObject({ ok: true, slots: 13 })
+    expect(save.coins).toBe(0)
   })
 
   it('swaps the insured item back only when there is room, and death returns it', () => {

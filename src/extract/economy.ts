@@ -8,10 +8,19 @@ export const UPGRADE_COSTS = [1500, 2500, 4000, 6000, 9000] as const
 export const UPGRADE_CAP = UPGRADE_COSTS.length + 1
 
 export const BAG_BASE = 12
-export const BAG_UPGRADES = [
-  { slots: 16, cost: 750 },
-  { slots: 20, cost: 1500 },
-] as const
+export const BAG_CAP = 20
+/** Coin price of the 13th slot through the 20th. One purchase adds one slot. */
+export const BAG_SLOT_COST = [1000, 1300, 1700, 2200, 2800, 3500, 4300, 5200] as const
+
+const RICH_METAL = new Set(['gold', 'spore', 'gem', 'abyss'])
+
+/** Gold, spore, gem, and abyss. Untagged heirloom or legendary ore still counts. */
+export function isRichOre(unit: { rarity?: string; metal?: string } | undefined): boolean {
+  if (!unit) return false
+  if (unit.metal === 'copper' || unit.metal === 'silver') return false
+  if (unit.metal && RICH_METAL.has(unit.metal)) return true
+  return !unit.metal && (unit.rarity === 'pusaka' || unit.rarity === 'legenda')
+}
 
 /** Buy price stays above the coins stored on the item, so resale cannot profit. */
 export const MERCHANT = {
@@ -66,13 +75,18 @@ export function blockArc(level: number): number {
 }
 
 export function bagSlotsOf(slots: number | undefined): number {
-  if (slots === 16 || slots === 20) return slots
-  return BAG_BASE
+  const n = Math.floor(Number(slots))
+  if (!Number.isFinite(n) || n < BAG_BASE) return BAG_BASE
+  return Math.min(BAG_CAP, n)
 }
 
-export function nextBagUpgrade(slots: number | undefined): { slots: number; cost: number } | null {
+export function nextBagUpgrade(slots: number | undefined): { slots: number; cost: number; ore: number } | null {
   const now = bagSlotsOf(slots)
-  return BAG_UPGRADES.find((step) => step.slots > now) ?? null
+  if (now >= BAG_CAP) return null
+  const cost = BAG_SLOT_COST[now - BAG_BASE]
+  if (cost == null) return null
+  const next = now + 1
+  return { slots: next, cost, ore: next >= 17 ? 1 : 0 }
 }
 
 export function needsSellConfirm(rarity: CoinRarity | undefined): boolean {

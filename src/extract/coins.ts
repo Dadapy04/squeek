@@ -10,6 +10,8 @@ export interface ItemUnit {
   coins: number
   rarity: CoinRarity
   origin: ItemOrigin
+  /** Vein metal, when this unit is ore. Missing on older saves. */
+  metal?: 'copper' | 'silver' | 'gold' | 'spore' | 'gem' | 'abyss'
 }
 
 export const COIN_RARITIES: CoinRarity[] = ['biasa', 'langka', 'pusaka', 'legenda']
@@ -89,7 +91,9 @@ export function readUnit(value: unknown, kind: ItemKind, salt: number): ItemUnit
     const rarity = COIN_RARITIES.includes(raw.rarity as CoinRarity) ? raw.rarity as CoinRarity : rarityForKind(kind, salt)
     const coins = typeof raw.coins === 'number' && Number.isFinite(raw.coins) ? Math.max(0, Math.floor(raw.coins)) : coinsFor(rarity, salt)
     const origin: ItemOrigin = raw.origin === 'loot' ? 'loot' : 'stash'
-    return { coins, rarity, origin }
+    const metal = (raw as { metal?: unknown }).metal
+    const known = metal === 'copper' || metal === 'silver' || metal === 'gold' || metal === 'spore' || metal === 'gem' || metal === 'abyss'
+    return known ? { coins, rarity, origin, metal } : { coins, rarity, origin }
   }
   return mintUnit(kind, salt, 'stash')
 }
