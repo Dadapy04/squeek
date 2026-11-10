@@ -4,7 +4,7 @@ import { drawBlockStrip, drawCarryStrip, drawContactSheet, drawDirectionStrip, d
 import { paintTitleScreen, titleUsesDesktopPrompt } from './title.ts'
 import { clampCenter, followBase, stickVector } from './float-stick.ts'
 import { AUDIO_KEY, playBoom, playFuseTick, playSoulBurst, playSoulCharge, resumeAudio } from './soul-audio.ts'
-import { bedFor, cuesFromDelta, deltaFromSnaps, playBed, playCue, readAudioPref as readMix, unlockAudio, writeAudioPref, type Ear } from './game-audio.ts'
+import { bedFor, cuesFromDelta, deltaFromSnaps, playBed, playBossFinale, playCue, readAudioPref as readMix, unlockAudio, writeAudioPref, type Ear } from './game-audio.ts'
 import { armAttack, attackLive, blockSecondTap, disarmAttack, holdReleased, type AttackBuffer } from './input-lock.ts'
 import { bossTitle, drawChestStrip, drawExtract, drawGallery, drawLootStrip, drawRevealStrip, setEffectBudget } from './view.ts'
 import { backingRatio } from './camera.ts'
@@ -907,6 +907,10 @@ function hear(run: ExtractSave['run']): void {
   lastEar = earOf(run)
   for (const cue of cues) {
     if (cue === 'fuse.tick' || cue === 'barrel.boom') continue
+    if (cue === 'boss.die') {
+      playBossFinale(run.depth || 1, pref)
+      continue
+    }
     playCue(cue, pref)
   }
   const near = foeView(run).some((foe) => foe.hp > 0 && (foe.wind > 0 || (foe.heard ?? 0) > 0 || Math.hypot(foe.x - run.x, foe.y - run.y) < 130))

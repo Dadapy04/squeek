@@ -176,6 +176,10 @@ export interface Run {
   booms?: { x: number; y: number; life: number }[]
   /** Seconds of blast shake. Not stored. */
   shake?: number
+  /** Real seconds of cosmetic slow-mo after a boss dies. Not stored. */
+  bossFinale?: number
+  /** The killing-blow sting already started. Not stored. */
+  bossFinaleUsed?: boolean
   /** Counts barrel blasts so the boom can play once. Not stored. */
   boomPing?: number
   /** Counts fuse ticks so the click can play once per beat. Not stored. */
@@ -364,7 +368,9 @@ export function spawnRoster(depth = 1, seed = 1): Foe[] {
     ...boss.map((foe) => ({ id: foe.id, zone: 'sarang' as ZoneId, kind: 'boss' as FoeKind, x: 0, y: -40, hp: foe.hp, breed: foe.breed, damage: foe.damage, native: true })),
   ]
   return spots.map((spot) => {
-    const base = spot.native ? spot.hp : spot.kind === 'boss' ? mods.bossHp : Math.round(spot.hp * mods.foeHp)
+    const kelabang = spot.kind === 'boss' && (spot.breed === 'kelabang' || spot.id === 'boss-induk')
+    const tuned = kelabang ? depthPlan(1).boss : null
+    const base = tuned ? tuned.hp : spot.native ? spot.hp : spot.kind === 'boss' ? mods.bossHp : Math.round(spot.hp * mods.foeHp)
     const slide = spot.id === 'crab-a' || spot.kind === 'boss' ? 0 : jitter
     return {
       id: spot.id,
@@ -374,7 +380,7 @@ export function spawnRoster(depth = 1, seed = 1): Foe[] {
       y: spot.y,
       hp: base,
       maxHp: base,
-      damage: spot.damage,
+      damage: tuned ? tuned.damage : spot.damage,
       breed: spot.breed,
       wind: 0,
       aim: 0,
@@ -1316,7 +1322,13 @@ function slayFoe(run: Run, foe: Foe): void {
   if (run.slain.includes(foe.id)) return
   foe.hp = 0
   run.slain.push(foe.id)
-  if (foe.kind === 'boss') spawnBossChest(run, foe)
+  if (foe.kind === 'boss') {
+    spawnBossChest(run, foe)
+    if (!run.bossFinaleUsed) {
+      run.bossFinaleUsed = true
+      run.bossFinale = 0.34
+    }
+  }
   else {
     if (foe.elite) {
       run.keys = (run.keys ?? 0) + 1
@@ -1382,7 +1394,10 @@ export type StepResult = 'play' | 'dead' | 'extracted'
 
 export function step(run: Run, input: Input, dt: number): StepResult {
   if (run.hp <= 0) return 'dead'
-  const h = Math.max(0, Math.min(0.05, dt))
+  const real = Math.max(0, Math.min(0.05, dt))
+  const slowing = (run.bossFinale ?? 0) > 0
+  if (slowing) run.bossFinale = Math.max(0, (run.bossFinale ?? 0) - real)
+  const h = slowing ? real * 0.28 : real
   run.stam = Math.min(STAM_MAX, run.stam + 16 * h)
   run.snare = Math.max(0, (run.snare ?? 0) - h)
   run.attackCd = Math.max(0, run.attackCd - h)

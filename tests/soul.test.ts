@@ -15,7 +15,6 @@ import {
   claimSoul,
   count,
   deploy,
-  depthMods,
   freshSave,
   killRun,
   soulNear,
@@ -167,7 +166,7 @@ describe('Pelebur Jiwa', () => {
     run.y = -40
     const boss = run.foes.find((foe) => foe.id === 'boss-induk')!
     const before = boss.hp
-    const chunk = Math.round(depthMods(run.depth).bossHp * SOUL_BOSS_FRACTION)
+    const chunk = Math.round((boss.maxHp ?? boss.hp) * SOUL_BOSS_FRACTION)
     run.soul!.phase = 'held'
     run.soul!.burst = false
     run.stam = 80

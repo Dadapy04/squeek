@@ -29,11 +29,66 @@ import { mintUnit } from '../src/extract/coins.ts'
 const still: Input = { moveX: 0, moveY: 0, attack: false, dodge: false, interact: false, block: false, use: null }
 
 describe('seven depths', () => {
+  it('makes only the kelabang 23% tougher', () => {
+    const boss = DEPTHS[0]!.boss
+    expect(boss.breed).toBe('kelabang')
+    expect(boss.hp).toBe(Math.round(176 * 1.23))
+    expect(boss.damage).toBe(Math.round(22 * 1.23))
+    expect(boss.patterns.map((pattern) => pattern.damage)).toEqual([
+      Math.round(22 * 1.23),
+      Math.round(16 * 1.23),
+      Math.round(22 * 1.23),
+    ])
+    const spawned = spawnRoster(1, 1).find((foe) => foe.id === 'boss-induk')!
+    expect(spawned.hp).toBe(216)
+    expect(spawned.maxHp).toBe(216)
+    expect(spawned.damage).toBe(27)
+    expect(bossPattern('kelabang', 0, 0).damage).toBe(27)
+    expect(bossPattern('kelabang', 1, 0).damage).toBe(20)
+    expect(bossPattern('liang', 0, 0).damage).toBe(48)
+    expect(DEPTHS[1]!.boss.hp).toBe(432)
+    expect(DEPTHS[1]!.boss.damage).toBe(48)
+    expect(DEPTHS[6]!.boss.hp).toBe(2040)
+    expect(DEPTHS[0]!.foes[0]!.hp).toBe(30)
+    expect(DEPTHS[0]!.foes[0]!.damage).toBe(12)
+    expect(spawnRoster(1, 1).find((foe) => foe.id === 'moth-a')!.damage).toBe(12)
+  })
+
+  it('slows the room once for the boss killing blow', () => {
+    const save = freshSave()
+    deploy(save, [{ kind: 'sword', n: 1 }])
+    const run = save.run!
+    const boss = run.foes.find((foe) => foe.kind === 'boss')!
+    run.zone = boss.zone
+    run.x = boss.x - 20
+    run.y = boss.y
+    run.facing = 0
+    boss.hp = 20
+    const attack: Input = { ...still, attack: true }
+    for (let i = 0; i < 12 && !run.slain.includes(boss.id); i += 1) step(run, i === 0 ? attack : still, 0.05)
+    expect(run.slain.includes(boss.id)).toBe(true)
+    expect(run.bossFinaleUsed).toBe(true)
+    expect(run.bossFinale ?? 0).toBeGreaterThan(0.25)
+    expect(run.bossFinale ?? 0).toBeLessThanOrEqual(0.34)
+    const marked = run.bossFinale ?? 0
+    const x = run.x
+    step(run, { ...still, moveX: 1 }, 0.05)
+    expect(run.bossFinale ?? 0).toBeCloseTo(marked - 0.05, 5)
+    expect(Math.abs(run.x - x)).toBeLessThan(2)
+    for (let i = 0; i < 10 && (run.bossFinale ?? 0) > 0; i += 1) step(run, still, 0.05)
+    expect(run.bossFinale).toBe(0)
+    boss.hp = 30
+    run.slain = run.slain.filter((id) => id !== boss.id)
+    for (let i = 0; i < 12 && boss.hp > 0; i += 1) step(run, i === 0 ? attack : still, 0.05)
+    expect(run.bossFinale).toBe(0)
+    expect(run.bossFinaleUsed).toBe(true)
+  })
+
   it('gives every depth its own regulars and one boss, and keeps the kelabang at depth 1', () => {
     expect(DEPTHS).toHaveLength(DEPTH_CAP)
     expect(lineup().map((foe) => foe.kind)).toEqual(['moth', 'burrow', 'spore', 'beetle', 'jelly', 'swarm', 'mole', 'web', 'ember', 'leech', 'bomber', 'wisp', 'crusher'])
     const first = spawnRoster(1, 1)
-    expect(first.find((foe) => foe.id === 'boss-induk')!.hp).toBe(176)
+    expect(first.find((foe) => foe.id === 'boss-induk')!.hp).toBe(216)
     expect(first.find((foe) => foe.id === 'crab-a')!.hp).toBe(44)
     expect(first.some((foe) => foe.kind === 'moth')).toBe(true)
     const seenBoss = new Set<string>()

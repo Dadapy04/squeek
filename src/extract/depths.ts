@@ -68,8 +68,8 @@ export const DEPTHS: DepthPlan[] = [
     recommend: 24,
     sword: { id: 'taring-liang', name: 'Taring Liang', damage: 36, rarity: 'pusaka', coins: 42 },
     boss: {
-      id: 'boss-induk', breed: 'kelabang', name: 'Kelabang Induk', hp: 176, damage: 22,
-      patterns: [slam(22), bolt(16), charge(22)],
+      id: 'boss-induk', breed: 'kelabang', name: 'Kelabang Induk', hp: 216, damage: 27,
+      patterns: [slam(27), bolt(20), charge(27)],
     },
     foes: [
       { id: 'moth-a', kind: 'moth', breed: 'moth', name: 'Ngengat Gua', zone: 'tambang', x: -88, y: -62, hp: 30, damage: 12 },
@@ -285,7 +285,7 @@ export function bossPhaseOf(hp: number, maxHp: number): 0 | 1 {
 
 export function bossPattern(breed: string, index: number, phase: number): BossPattern {
   const plan = DEPTHS.find((row) => row.boss.breed === breed)
-  const patterns = plan?.boss.patterns ?? [slam(22), bolt(16), charge(22)]
+  const patterns = plan?.boss.patterns ?? DEPTHS[0]!.boss.patterns
   const list = phase >= 1 ? patterns : patterns.slice(0, 2)
   const at = ((Math.floor(index) % list.length) + list.length) % list.length
   return list[at]!

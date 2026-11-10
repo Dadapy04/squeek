@@ -41,7 +41,7 @@ describe('depth, boss, and fresh maps', () => {
     expect(depthMods(2).foeDamage).toBeGreaterThan(1)
     expect(depthMods(2).foeDamage).toBeLessThan(1.2)
     const boss = spawnRoster(1, 1).find((foe) => foe.kind === 'boss')!
-    expect(boss.hp).toBe(176)
+    expect(boss.hp).toBe(216)
     expect(boss.zone).toBe('sarang')
     expect(spawnRoster(1, 1).filter((foe) => foe.zone === 'tambang').length).toBeGreaterThan(2)
   })

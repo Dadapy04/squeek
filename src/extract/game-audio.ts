@@ -194,8 +194,9 @@ export function deltaFromSnaps(prev: Ear | null, next: Ear): CueDelta {
   if (next.sword > prev.sword || next.slots > prev.slots) d.upgrade = true
   if (next.wind > prev.wind + 0.05) d.wind = true
   if (next.heard > 0 && prev.heard <= 0) d.alert = true
-  if (next.slain > prev.slain) d.foeDie = true
   if (next.bossSlain && !prev.bossSlain) d.bossDie = true
+  const bossPart = next.bossSlain && !prev.bossSlain ? 1 : 0
+  if (next.slain > prev.slain + bossPart) d.foeDie = true
   if (next.banner !== prev.banner && next.banner.includes('phase')) d.bossPhase = true
   if (next.banner !== prev.banner && next.banner.includes('rage')) d.bossRoar = true
   if (next.vein > prev.vein) d.pick = true
@@ -412,6 +413,21 @@ function silenceBed(): void {
   currentBed = ''
 }
 
+let finaleArmed = false
+let duckUntil = 0
+
+export function armBossFinale(): boolean {
+  if (finaleArmed) return false
+  finaleArmed = true
+  return true
+}
+
+/** Depth 1 stays at pitch 1. Each later floor sits a little lower. */
+export function bossPitch(depth: number): number {
+  const level = Math.max(1, Math.min(7, Math.floor(depth) || 1))
+  return 1 - (level - 1) * 0.035
+}
+
 export function resetMix(): void {
   silenceBed()
   ctx = null
@@ -419,6 +435,8 @@ export function resetMix(): void {
   sfxGain = null
   liveOsc = 0
   timers = 0
+  finaleArmed = false
+  duckUntil = 0
 }
 
 function phraseVoice(audio: AudioContext, dest: GainNode, freq: number, gen: number): void {
@@ -446,7 +464,8 @@ function phraseVoice(audio: AudioContext, dest: GainNode, freq: number, gen: num
 export function playBed(id: BedId, pref: AudioPref, host: AudioHost | null = typeof window === 'undefined' ? null : window): void {
   const audio = context(host)
   if (!audio || !musicGain) return
-  const want = pref.muted ? 0 : pref.music * 0.22
+  const ducked = audio.currentTime < duckUntil
+  const want = pref.muted ? 0 : pref.music * (ducked ? 0.03 : 0.22)
   if (id === currentBed && bedBus) {
     musicGain.gain.cancelScheduledValues(audio.currentTime)
     musicGain.gain.linearRampToValueAtTime(want, audio.currentTime + 0.2)
@@ -493,4 +512,66 @@ export function playBed(id: BedId, pref: AudioPref, host: AudioHost | null = typ
   }
   musicGain.gain.cancelScheduledValues(audio.currentTime)
   musicGain.gain.linearRampToValueAtTime(want, audio.currentTime + 0.4)
+}
+
+function slideSine(audio: AudioContext, dest: AudioNode, when: number, freq: number, dur: number, peak: number): void {
+  const osc = audio.createOscillator()
+  osc.type = 'sine'
+  osc.frequency.setValueAtTime(Math.max(40, freq), when)
+  osc.frequency.exponentialRampToValueAtTime(Math.max(36, freq * 0.5), when + dur)
+  const filter = audio.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.value = 480
+  const gain = audio.createGain()
+  gain.gain.setValueAtTime(0.0001, when)
+  gain.gain.linearRampToValueAtTime(Math.max(0.0002, peak), when + 0.03)
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + dur)
+  osc.connect(filter)
+  filter.connect(gain)
+  gain.connect(dest)
+  watchOsc(osc)
+  osc.start(when)
+  osc.stop(when + dur + 0.02)
+}
+
+function softNoise(audio: AudioContext, dest: AudioNode, when: number, dur: number, peak: number, cutoff: number): void {
+  const src = audio.createBufferSource()
+  src.buffer = noiseBuffer(audio)
+  const filter = audio.createBiquadFilter()
+  filter.type = 'lowpass'
+  filter.frequency.setValueAtTime(cutoff, when)
+  filter.frequency.exponentialRampToValueAtTime(140, when + dur)
+  const gain = audio.createGain()
+  gain.gain.setValueAtTime(0.0001, when)
+  gain.gain.linearRampToValueAtTime(Math.max(0.0002, peak), when + 0.02)
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + dur)
+  src.connect(filter)
+  filter.connect(gain)
+  gain.connect(dest)
+  src.start(when)
+  src.stop(when + dur)
+}
+
+/** Killing blow. One crunch, a slowed roar, then a short sting. Returns false if it already played. */
+export function playBossFinale(depth: number, pref: AudioPref, host: AudioHost | null = typeof window === 'undefined' ? null : window): boolean {
+  if (!armBossFinale()) return false
+  const audio = context(host)
+  const voices = sfxGain
+  const music = musicGain
+  if (!audio || !voices || !music || pref.muted || pref.sfx <= 0) return true
+  const pitch = bossPitch(depth)
+  const now = audio.currentTime
+  duckUntil = now + 2.3
+  music.gain.cancelScheduledValues(now)
+  music.gain.linearRampToValueAtTime(pref.music * 0.03, now + 0.06)
+  const body = pref.sfx
+  slideSine(audio, voices, now, 92 * pitch, 0.34, 0.2 * body)
+  softNoise(audio, voices, now, 0.3, 0.1 * body, 700)
+  slideSine(audio, voices, now + 0.32, 148 * pitch, 0.7, 0.12 * body)
+  softNoise(audio, voices, now + 0.32, 0.75, 0.07 * body, 320)
+  const sting = [392, 494, 587]
+  sting.forEach((freq, index) => {
+    slideSine(audio, voices, now + 1.15 + index * 0.14, freq * pitch, 0.22, 0.08 * body)
+  })
+  return true
 }

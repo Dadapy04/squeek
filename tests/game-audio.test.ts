@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SOUND_CUES, allowSound, bedFor, cuesFromDelta, deltaFromSnaps, mixLedger, playBed, readAudioPref, resetMix, writeAudioPref, type CueDelta, type Ear } from '../src/extract/game-audio.ts'
+import { SOUND_CUES, allowSound, armBossFinale, bedFor, bossPitch, cuesFromDelta, deltaFromSnaps, mixLedger, playBed, readAudioPref, resetMix, writeAudioPref, type CueDelta, type Ear } from '../src/extract/game-audio.ts'
 
 const blank: Ear = {
   hp: 125, stepping: false, swing: 0, dodge: 0, blocking: false, shield: 4, bag: 0, drops: 0,
@@ -115,6 +115,24 @@ describe('sound hooks', () => {
     expect(still).not.toContain('player.step')
     resetMix()
   }, 15000)
+
+  it('fires the boss killing blow once', () => {
+    resetMix()
+    const dying = cuesFromDelta(deltaFromSnaps(blank, { ...blank, slain: 1, bossSlain: true }))
+    expect(dying).toContain('boss.die')
+    expect(dying).not.toContain('foe.die')
+    const later = cuesFromDelta(deltaFromSnaps({ ...blank, slain: 1, bossSlain: true }, { ...blank, slain: 2, bossSlain: true }))
+    expect(later).toContain('foe.die')
+    expect(later).not.toContain('boss.die')
+    expect(armBossFinale()).toBe(true)
+    expect(armBossFinale()).toBe(false)
+    expect(bossPitch(1)).toBeCloseTo(1)
+    expect(bossPitch(7)).toBeLessThan(bossPitch(1))
+    expect(bossPitch(7)).toBeGreaterThan(0.7)
+    resetMix()
+    expect(armBossFinale()).toBe(true)
+    resetMix()
+  })
 
   it('rate-limits a swarm so the same hit cannot retrigger inside its gap', () => {
     const last = new Map<string, number>()

@@ -3,7 +3,6 @@ import { isRuinGrout } from '../src/extract/patterns.ts'
 import { loadExtract } from '../src/extract/save.ts'
 import { worldPoint } from '../src/extract/minimap.ts'
 import {
-  BOSS_BASE_HP,
   NEST_DOOR,
   PLAYER_R,
   ZONE_H,
@@ -72,7 +71,7 @@ describe('sarang door, boss migration, and the ruin seam', () => {
     for (let i = 0; i < 20 && run.zone === 'reruntuhan'; i += 1) step(run, south, 0.05)
     expect(run.zone).toBe('sarang')
     const boss = run.foes.find((foe) => foe.id === 'boss-induk')!
-    expect(boss.hp).toBe(BOSS_BASE_HP)
+    expect(boss.hp).toBe(216)
     expect(boss.y).toBeLessThan(-20)
     expect(Math.hypot(boss.x - run.x, boss.y - run.y)).toBeLessThan(90)
     const seen = []
@@ -125,7 +124,7 @@ describe('sarang door, boss migration, and the ruin seam', () => {
     expect(run.foes.find((foe) => foe.id === 'spit-a')!.hp).toBe(12)
     const boss = run.foes.find((foe) => foe.id === 'boss-induk')!
     expect(boss.zone).toBe('sarang')
-    expect(boss.hp).toBe(BOSS_BASE_HP)
+    expect(boss.hp).toBe(216)
     expect(boss.y).toBeLessThan(0)
     expect(run.foes.some((foe) => foe.kind === 'brute')).toBe(true)
     expect(run.foes.some((foe) => foe.kind === 'lurker')).toBe(true)
