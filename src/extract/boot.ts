@@ -37,6 +37,7 @@ import {
   STAM_MAX,
   addSupport,
   addUnits,
+  armFoundSpear,
   bankRun,
   carriedCount,
   claimLoot,
@@ -74,6 +75,7 @@ import {
   localValue,
   spendSupport,
   step,
+  stowSpear,
   unequipSpear,
   PROP_REACH,
   usableProp,
@@ -365,16 +367,25 @@ document.querySelector('#settings')!.addEventListener('pointerdown', (event) => 
 document.querySelector('#workshop')!.addEventListener('pointerdown', (event) => {
   if (event.target === event.currentTarget) closeWorkshop()
 })
-document.querySelector('#openBag')!.addEventListener('click', () => {
+function bindPress(id: string, onPress: () => void): void {
+  const button = document.querySelector<HTMLButtonElement>(id)
+  if (!button) return
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    onPress()
+  })
+}
+bindPress('#openBag', () => {
   if (save.run && bagFull(save.run)) rememberTip('bagfull')
   playCue('ui.bag', mixPref())
   openBag()
 })
-document.querySelector('#bagSwap')!.addEventListener('click', () => openBag())
+bindPress('#bagSwap', () => openBag())
 document.querySelector('#bagDrop1')!.addEventListener('click', () => dropBag(1))
 document.querySelector('#bagDropAll')!.addEventListener('click', () => dropBag(99))
 document.querySelector('#bagUse')!.addEventListener('click', () => useBag())
-document.querySelector('#openShop')!.addEventListener('click', () => openPanel('btn.workshop', 'shop.leadRun'))
+bindPress('#openShop', () => openPanel('btn.workshop', 'shop.leadRun'))
 document.querySelector('#openWorkshop')!.addEventListener('click', () => { rememberTip('workshop'); openWorkshop() })
 const musicVol = document.querySelector<HTMLInputElement>('#musicVol')
 const sfxVol = document.querySelector<HTMLInputElement>('#sfxVol')
@@ -450,10 +461,18 @@ function buyFromMerchant(kind: 'bandage' | 'p3k'): void {
 document.querySelector('#workshopClose')!.addEventListener('click', () => closeWorkshop())
 document.querySelector('#workshopNo')!.addEventListener('click', () => cancelWorkshop())
 document.querySelector('#workshopYes')!.addEventListener('click', () => confirmWorkshop())
-document.querySelector('#openHome')!.addEventListener('click', () => openPanel('home.panelTitle', 'home.panelBody'))
-for (const id of ['#slotSword', '#slotShield', '#slotSoon']) {
-  document.querySelector(id)!.addEventListener('click', (event) => event.preventDefault())
-}
+bindPress('#openHome', () => openPanel('home.panelTitle', 'home.panelBody'))
+bindPress('#slotSword', () => {
+  if (save.run) stowSpear(save.run)
+})
+bindPress('#slotShield', () => undefined)
+bindPress('#slotSoon', () => {
+  const run = save.run
+  if (!run) return
+  const waiting = run.found?.[0]
+  if (waiting) armFoundSpear(run, waiting.id)
+  else stowSpear(run)
+})
 function closeOverlay(): void {
   panelCopy = null
   document.querySelector<HTMLElement>('#overlay')!.hidden = true
@@ -717,7 +736,9 @@ function fillBagDetail(run: NonNullable<ExtractSave['run']>, detail: HTMLElement
   text.innerHTML = `<b>${full}</b><br><span style="color:${color}">${tier}</span> ×${n}.${home}<br>${extra}`
   drop1.hidden = false
   dropAll.hidden = n < 2
-  use.hidden = pick.kind !== 'bandage' && pick.kind !== 'tonic' && pick.kind !== 'p3k'
+  const equipSpearPick = spear != null
+  use.hidden = !equipSpearPick && pick.kind !== 'bandage' && pick.kind !== 'tonic' && pick.kind !== 'p3k'
+  use.textContent = equipSpearPick ? t('bag.equip') : t('bag.use')
   const row = detail.querySelector('.row')
   let insure = detail.querySelector<HTMLButtonElement>('#bagInsure')
   if (!insure && row) {
@@ -787,7 +808,14 @@ function dropBag(n: number): void {
 }
 function useBag(): void {
   const run = save.run
-  if (!run || !bagPick || (bagPick.kind !== 'bandage' && bagPick.kind !== 'tonic' && bagPick.kind !== 'p3k')) return
+  if (!run || !bagPick) return
+  if (bagPick.spearId) {
+    if (!armFoundSpear(run, bagPick.spearId)) return
+    bagPick = { kind: 'tombak', spearId: bagPick.spearId, worn: true }
+    paintBag()
+    return
+  }
+  if (bagPick.kind !== 'bandage' && bagPick.kind !== 'tonic' && bagPick.kind !== 'p3k') return
   if (!useItem(run, bagPick.kind)) return
   if (count(run.bag, bagPick.kind) <= 0) bagPick = null
   paintBag()
@@ -1726,7 +1754,24 @@ function paint(): void {
   else delete swordSlot.dataset.rarity
   swordSlot.classList.toggle('on', run.sword || run.spear != null)
   document.querySelector<HTMLButtonElement>('#slotShield')!.dataset.kind = 'shield'
-  document.querySelector<HTMLButtonElement>('#slotSoon')!.dataset.kind = 'soon'
+  const soon = document.querySelector<HTMLButtonElement>('#slotSoon')!
+  const waiting = (run.found ?? [])[0]
+  if (waiting || (run.spear && run.sword)) {
+    const show = waiting ?? run.spear!
+    soon.disabled = false
+    soon.classList.remove('locked')
+    soon.classList.toggle('on', waiting == null)
+    soon.dataset.kind = 'tombak'
+    soon.dataset.rarity = show.rarity
+    soon.textContent = t('hud.spear')
+  } else {
+    soon.disabled = true
+    soon.classList.add('locked')
+    soon.classList.remove('on')
+    soon.dataset.kind = 'soon'
+    delete soon.dataset.rarity
+    soon.textContent = t('hud.soon')
+  }
   const shieldSlot = document.querySelector<HTMLButtonElement>('#slotShield')!
   if (run.shield == null) {
     shieldSlot.textContent = t('item.shield')

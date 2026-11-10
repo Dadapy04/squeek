@@ -21,9 +21,11 @@ import {
 } from '../src/extract/spear.ts'
 import {
   bankRun,
+  armFoundSpear,
   claimLoot,
   deploy,
   equipSpear,
+  stowSpear,
   freshSave,
   killRun,
   step,
@@ -71,7 +73,39 @@ describe('spear reward', () => {
     expect(critLands({ ...crit, perks: ['reach'] }, 0)).toBe(false)
   })
 
-  it('keeps a found spear unusable until it is extracted and equipped', () => {
+  it('equips a found spear for this delve without changing its thrust, then banks it', () => {
+    const save = freshSave()
+    deploy(save, [{ kind: 'sword', n: 1 }])
+    const run = save.run!
+    const spear = rollSpear(11)
+    const power = spearPower(spear)
+    run.drops.push({ id: 'arm-prize', kind: 'tombak', x: run.x, y: run.y, spear })
+    expect(claimLoot(run, 'arm-prize', 'local')).toBe('ok')
+    expect(run.spear).toBeNull()
+    expect(armFoundSpear(run, spear.id)).toBe(true)
+    expect(run.spear?.id).toBe(spear.id)
+    expect(run.found).toEqual([])
+    expect(spearPower(run.spear!)).toBe(power)
+    expect(run.sword).toBe(true)
+    expect(stowSpear(run)).toBe(true)
+    expect(run.spear).toBeNull()
+    expect(run.found.map((item) => item.id)).toEqual([spear.id])
+    expect(armFoundSpear(run)).toBe(true)
+    run.channel = 3
+    expect(bankRun(save)).toBe(true)
+    expect(save.spear?.id).toBe(spear.id)
+    expect(save.spears).toEqual([])
+    const doomed = freshSave()
+    deploy(doomed, [{ kind: 'sword', n: 1 }])
+    const lost = rollSpear(12)
+    doomed.run!.found.push(lost)
+    armFoundSpear(doomed.run!, lost.id)
+    killRun(doomed)
+    expect(doomed.spear).toBeNull()
+    expect(doomed.spears).toEqual([])
+  })
+
+  it('keeps a found spear in the rack until it is equipped at base', () => {
     const save = freshSave()
     deploy(save, [{ kind: 'sword', n: 1 }])
     const run = save.run!

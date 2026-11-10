@@ -847,6 +847,26 @@ function pullUnits(list: Stack[], kind: ItemKind, n: number): ItemUnit[] {
   return taken.map((unit) => ({ ...unit, origin: 'stash' as const }))
 }
 
+/** Equip a spear picked up this delve. Same thrust as a spear brought from base. */
+export function armFoundSpear(run: Run, id?: string): boolean {
+  const list = run.found ?? []
+  const spear = (id ? list.find((item) => item.id === id) : list[0]) ?? null
+  if (!spear) return false
+  const rest = list.filter((item) => item.id !== spear.id)
+  if (run.spear && run.spear.id !== spear.id) rest.push(run.spear)
+  run.found = rest
+  run.spear = spear
+  return true
+}
+
+/** Put the thrust away and bring the sword back. A spear-only loadout stays armed. */
+export function stowSpear(run: Run): boolean {
+  if (!run.spear || !run.sword) return false
+  run.found = [...(run.found ?? []), run.spear]
+  run.spear = null
+  return true
+}
+
 export function equipSpear(save: ExtractSave, id: string): boolean {
   if (save.run) return false
   const spear = save.spears.find((item) => item.id === id)
