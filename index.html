@@ -11,11 +11,11 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <meta name="theme-color" content="#1a140f" />
     <title>Squeek: Extraction Survival</title>
-    <script type="module" crossorigin src="./assets/main-CgZ9NsAg.js"></script>
+    <script type="module" crossorigin src="./assets/main-CO7RWEyE.js"></script>
     <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
     <link rel="modulepreload" crossorigin href="./assets/wheel-BKW0ZpM6.js">
     <link rel="modulepreload" crossorigin href="./assets/preload-helper-DclECHGd.js">
-    <link rel="stylesheet" crossorigin href="./assets/main-DmxlB0Br.css">
+    <link rel="stylesheet" crossorigin href="./assets/main-C9xU_2t1.css">
   </head>
   <body data-drive="normal" class="title">
     <div id="bootSplash" role="status">Squeek</div>
@@ -31,6 +31,8 @@
     </section>
     <section id="base">
       <div id="baseScroll">
+        <p id="accountBadgeBase" class="account-badge" data-state="out"><i class="dot" aria-hidden="true"></i><span>Guest</span></p>
+        <canvas id="basePortrait" width="160" height="100" hidden></canvas>
         <p class="eyebrow" data-i18n="base.eyebrow">Delve · local coin</p>
         <div id="baseLang" class="lang-toggle" role="group">
           <button type="button" data-set-lang="id">ID</button>
@@ -118,9 +120,11 @@
         </footer>
       </div>
     </div>
+    <p id="accountToast" class="account-toast" role="status" hidden></p>
     <section id="field" hidden>
       <p id="rotateHint" data-i18n="rotate">Turn the phone sideways. Stash and the delve in progress stay as they are.</p>
       <div id="bars">
+        <p id="accountBadge" class="account-badge" data-state="out"><i class="dot" aria-hidden="true"></i><span>Guest</span></p>
         <p class="hud hud-hp"><span class="ico heart" aria-hidden="true"></span><span class="track"><i id="hpFill"></i></span><span id="hpText">HP 100/100</span></p>
         <p class="hud hud-stam"><span class="ico bolt" aria-hidden="true"></span><span class="track"><i id="stamFill"></i></span><span id="stamText">Stamina 100/100</span></p>
         <p id="bagText">Carried 0/12</p>
