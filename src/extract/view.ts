@@ -6,6 +6,7 @@ import { spearReach, spearRgb } from './spear.ts'
 import { bossDisplay, bossPattern, depthPlan, foeName, lineup, type AttackKind } from './depths.ts'
 import { t } from './i18n.ts'
 import { roomAt, themeFor } from './dungeon.ts'
+import { foeCanvas, hasFoeSprite } from './foe-sprites.ts'
 import { blitMotif, interactable, mapLabel, spriteIdFor } from './map-sprites.ts'
 import { EXTRACT_ZONE, FOE_SPOTS, NEST_DOOR, SOUL_CAST, SOUL_RADIUS, STAIRS, SWING_REACH, ZONE_H, ZONE_W, claimTarget, depthMods, foeView, isSpecial, nestGap, runCrates, stairsOpen, syncCentipede, swordAim, type Drop, type Foe, type Run } from './sim.ts'
 
@@ -179,10 +180,11 @@ export function drawExtract(
       ctx.fillStyle = foe.kind === 'boss' ? '#9cbf6a' : '#f2e2a0'
       ctx.fillRect(Math.round(b.x - 2 * scale), Math.round(b.y - 2 * scale), Math.max(2, 4 * scale), Math.max(2, 4 * scale))
     }
-    if (isSpecial(foe)) {
-      drawSpecialTelegraph(ctx, foe, p.x, p.y, scale)
+    if (isSpecial(foe) || (foe.elite && hasFoeSprite(String(foe.breed)))) {
+      if (isSpecial(foe)) drawSpecialTelegraph(ctx, foe, p.x, p.y, scale)
+      else if (foe.wind > 0) drawTelegraph(ctx, 'brute', p.x, p.y, foe.aim, scale, foe.wind, foe.pattern ?? 0)
       if (foe.hidden) drawMound(ctx, foe.lurk ? at(foe.lurk.x, foe.lurk.y) : p, scale, foe.wind)
-      else drawCreature(ctx, p.x, p.y, scale * (foe.kind === 'boss' ? 2.6 : 1.15), foe, run.age)
+      else drawCreature(ctx, p.x, p.y, scale * (foe.kind === 'boss' ? 2.6 : foe.elite ? 1.35 : 1.15), foe, run.age)
       if ((foe.glance ?? 0) > 0) drawArmorSparks(ctx, p.x, p.y, scale, foe.aim, foe.glance ?? 0)
       if (foe.phase === 1) {
         ctx.strokeStyle = 'rgba(225, 6, 0, 0.85)'
@@ -1749,79 +1751,47 @@ function drawSpecialTelegraph(ctx: CanvasRenderingContext2D, foe: Foe, x: number
 }
 
 function drawCreature(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number, foe: Creature, age: number): void {
-  const s = scale
-  const flash = foe.flash > 0
-  const body = flash ? '#f7fbff' : '#14110e'
+  const breed = String(foe.breed || foe.kind)
+  const art = foeCanvas(hasFoeSprite(breed) ? breed : 'burrow', Math.floor(age * 6))
   ctx.save()
   ctx.translate(x, y)
   ctx.rotate(foe.aim || 0)
-  const breed = foe.breed || foe.kind
-  const bob = Math.sin(age * 6) * s
-  if (breed === 'moth' || breed === 'swarm') {
-    blot(ctx, -7 * s, -2 * s + bob, 5 * s, 4 * s, flash ? '#fff' : '#c4a15a')
-    blot(ctx, 2 * s, -2 * s - bob, 5 * s, 4 * s, flash ? '#fff' : '#f2c04a')
-    blot(ctx, -2 * s, -2 * s, 4 * s, 4 * s, flash ? '#fff' : '#6a3a68')
-    blot(ctx, -1 * s, -4 * s, 2 * s, 2 * s, '#e7edf4')
-  } else if (breed === 'burrow' || breed === 'liang') {
-    blot(ctx, -8 * s, -5 * s, 16 * s, 10 * s, body)
-    blot(ctx, -7 * s, -4 * s, 14 * s, 8 * s, flash ? '#fff' : '#8a5a32')
-    blot(ctx, 4 * s, -2 * s, 6 * s, 2 * s, '#e7b2a4')
-    blot(ctx, -8 * s, 2 * s, 4 * s, 3 * s, '#c4a15a')
-    blot(ctx, 2 * s, 3 * s, 4 * s, 3 * s, '#c4a15a')
-  } else if (breed === 'spore' || breed === 'spora') {
-    blot(ctx, -6 * s, -2 * s, 12 * s, 8 * s, flash ? '#fff' : '#24584a')
-    blot(ctx, -8 * s, -8 * s, 16 * s, 8 * s, flash ? '#fff' : '#7ec8c4')
-    blot(ctx, -2 * s, -10 * s, 3 * s, 3 * s, '#f2e2a0')
-    blot(ctx, 3 * s, -6 * s, 2 * s, 2 * s, '#f2c04a')
-  } else if (breed === 'beetle' || breed === 'kumbang') {
-    blot(ctx, -8 * s, -6 * s, 18 * s, 12 * s, body)
-    blot(ctx, -6 * s, -5 * s, 14 * s, 10 * s, flash ? '#fff' : '#3d5a28')
-    blot(ctx, 6 * s, -2 * s, 6 * s, 4 * s, flash ? '#fff' : '#c4a15a')
-    blot(ctx, -2 * s, -3 * s, 3 * s, 2 * s, '#e10600')
-  } else if (breed === 'jelly') {
-    blot(ctx, -7 * s, -6 * s, 14 * s, 12 * s, flash ? '#fff' : '#1c3a28')
-    blot(ctx, -5 * s, -8 * s + bob, 10 * s, 10 * s, flash ? '#fff' : '#6aa86a')
-    blot(ctx, -2 * s, -3 * s, 2 * s, 2 * s, '#f7fbff')
-    blot(ctx, 2 * s, -2 * s, 2 * s, 2 * s, '#f7fbff')
-  } else if (breed === 'mole' || breed === 'mondok') {
-    blot(ctx, -8 * s, -5 * s, 14 * s, 10 * s, flash ? '#fff' : '#5c564c')
-    blot(ctx, 2 * s, -7 * s, 8 * s, 12 * s, flash ? '#fff' : '#8aa0b8')
-    blot(ctx, 4 * s, -2 * s, 3 * s, 3 * s, '#d5dce6')
-    blot(ctx, -4 * s, -2 * s, 2 * s, 2 * s, '#14110e')
-  } else if (breed === 'web' || breed === 'laba') {
-    blot(ctx, -3 * s, -3 * s, 6 * s, 6 * s, flash ? '#fff' : '#d7c8b0')
-    for (const leg of [-1, 1]) {
-      blot(ctx, -10 * s, leg * 2 * s, 8 * s, 2 * s, '#6a5438')
-      blot(ctx, 2 * s, leg * 3 * s, 8 * s, 2 * s, '#6a5438')
-    }
-    blot(ctx, -1 * s, -1 * s, 2 * s, 2 * s, '#e10600')
-  } else if (breed === 'ember') {
-    blot(ctx, -7 * s, -3 * s, 12 * s, 6 * s, flash ? '#fff' : '#6a2a18')
-    blot(ctx, 4 * s, -2 * s, 4 * s, 4 * s, '#e07a32')
-    blot(ctx, -10 * s, -1 * s, 4 * s, 2 * s, '#e10600')
-    blot(ctx, 6 * s, -4 * s, 2 * s, 2 * s, '#f2c04a')
-  } else if (breed === 'leech') {
-    blot(ctx, -9 * s, -3 * s, 16 * s, 6 * s, flash ? '#fff' : '#4a1020')
-    blot(ctx, 4 * s, -4 * s, 5 * s, 8 * s, flash ? '#fff' : '#a33b32')
-    blot(ctx, 6 * s, -1 * s, 2 * s, 2 * s, '#f7fbff')
-  } else if (breed === 'bomber') {
-    blot(ctx, -6 * s, -5 * s, 12 * s, 10 * s, flash ? '#fff' : '#3a2c20')
-    blot(ctx, -2 * s, -8 * s, 2 * s, 4 * s, '#c4a15a')
-    blot(ctx, -1 * s, -10 * s, 2 * s, 2 * s, age % 0.3 < 0.15 ? '#f2c04a' : '#e10600')
-  } else if (breed === 'wisp') {
-    blot(ctx, -4 * s, -8 * s + bob, 8 * s, 12 * s, flash ? '#fff' : '#1a4a58')
-    blot(ctx, -2 * s, -6 * s + bob, 4 * s, 8 * s, flash ? '#fff' : '#7ec8c4')
-    blot(ctx, -1 * s, -3 * s, 2 * s, 3 * s, '#f7fbff')
-  } else if (breed === 'crusher' || breed === 'mulut') {
-    blot(ctx, -12 * s, -8 * s, 24 * s, 16 * s, body)
-    blot(ctx, -10 * s, -6 * s, 20 * s, 12 * s, flash ? '#fff' : breed === 'mulut' ? '#2a1418' : '#3a4038')
-    blot(ctx, -6 * s, -2 * s, 4 * s, 4 * s, '#f2c04a')
-    blot(ctx, 2 * s, -2 * s, 4 * s, 4 * s, '#e10600')
-    blot(ctx, -4 * s, 2 * s, 10 * s, 2 * s, '#e7edf4')
-  } else {
-    blot(ctx, -6 * s, -6 * s, 12 * s, 12 * s, flash ? '#fff' : '#6a442c')
+  if (art) {
+    const s = Math.max(1, scale)
+    ctx.imageSmoothingEnabled = false
+    ctx.drawImage(art, Math.round(-(art.width * s) / 2), Math.round(-(art.height * s) / 2), Math.round(art.width * s), Math.round(art.height * s))
+  }
+  if (foe.flash > 0) {
+    ctx.globalAlpha = 0.45
+    ctx.fillStyle = '#f7fbff'
+    ctx.fillRect(-8 * scale, -8 * scale, 16 * scale, 16 * scale)
   }
   ctx.restore()
+}
+
+export function drawFoeRoster(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+  ctx.imageSmoothingEnabled = false
+  ctx.fillStyle = '#120e0c'
+  ctx.fillRect(0, 0, width, height)
+  const breeds = ['crab', 'spitter', 'brute', 'lurker', 'moth', 'swarm', 'burrow', 'spore', 'beetle', 'jelly', 'mole', 'web', 'ember', 'leech', 'bomber', 'wisp', 'crusher', 'kelabang', 'liang', 'spora', 'kumbang', 'mondok', 'laba', 'mulut']
+  const cols = 6
+  ctx.font = '12px Courier New, monospace'
+  ctx.textAlign = 'center'
+  breeds.forEach((breed, index) => {
+    const col = index % cols
+    const row = Math.floor(index / cols)
+    const x = (col + 0.5) * (width / cols)
+    const y = 70 + row * 150
+    const boss = ['kelabang', 'liang', 'spora', 'kumbang', 'mondok', 'laba', 'mulut'].includes(breed)
+    if (breed === 'kelabang') drawCentipede(ctx, Array.from({ length: 6 }, (_, i) => ({ x: x - 40 + i * 14, y })), 2, 0, 0, 1, 0, 0, 1, 0)
+    else if (breed === 'crab') drawMaw(ctx, x, y, 3, 1, 0, 0, 0)
+    else if (breed === 'spitter') drawWing(ctx, x, y, 3, 1, 0, 0)
+    else if (breed === 'brute') drawBrute(ctx, x, y, 3, 0, 0, 0)
+    else if (breed === 'lurker') drawLurker(ctx, x, y, 3, 0, 1)
+    else drawCreature(ctx, x, y, boss ? 3.2 : 2.6, { kind: boss ? 'boss' : breed, breed, flash: 0, aim: 0, wind: 0, dash: 0 }, 0)
+    ctx.fillStyle = '#f6ecd8'
+    ctx.fillText(breed, x, y + 64)
+  })
 }
 
 export function drawGallery(ctx: CanvasRenderingContext2D, width: number, height: number): void {

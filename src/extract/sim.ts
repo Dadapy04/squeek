@@ -1679,7 +1679,8 @@ export function runCrates(run: Run): Crate[] {
 
 function openNear(run: Run): void {
   if (useProps(run)) return
-  const crate = runCrates(run).find((item) => item.zone === run.zone && !run.opened.includes(item.id) && Math.hypot(item.x - run.x, item.y - run.y) < 28)
+  if (chipNearestVein(run)) return
+  const crate = runCrates(run).find((item) => item.zone === run.zone && !run.opened.includes(item.id) && Math.hypot(item.x - run.x, item.y - run.y) < PROP_REACH)
   if (!crate) return
   run.opened.push(crate.id)
   const count = crate.loot.length
@@ -2366,6 +2367,32 @@ function grantVein(run: Run, vein: VeinNode): void {
     addUnits(run.bag, 'ore', [{ rarity: vein.rarity, coins, origin: 'loot' }])
   }
   float(run, vein.big ? t('ore.big') : t('ore.break'))
+}
+
+export function nearestVein(run: Run): VeinNode | null {
+  const chart = run.chart
+  if (!chart) return null
+  let best: VeinNode | null = null
+  let bestD = PROP_REACH
+  for (const vein of chart.veins) {
+    if (vein.hp <= 0 || vein.room !== run.roomId) continue
+    const dist = Math.hypot(vein.x - run.x, vein.y - run.y)
+    if (dist < bestD) {
+      best = vein
+      bestD = dist
+    }
+  }
+  return best
+}
+
+function chipNearestVein(run: Run): boolean {
+  const vein = nearestVein(run)
+  if (!vein) return false
+  vein.hp -= 1
+  miningNoise(run, vein.x, vein.y)
+  if (vein.hp > 0) float(run, t('ore.vein'))
+  else grantVein(run, vein)
+  return true
 }
 
 export function miningNoise(run: Run, x: number, y: number): number {

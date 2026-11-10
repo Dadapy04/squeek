@@ -8,6 +8,7 @@ import { armAttack, attackLive, blockSecondTap, disarmAttack, holdReleased, type
 import { bossTitle, drawChestStrip, drawExtract, drawGallery, drawLootStrip, drawRevealStrip, setEffectBudget } from './view.ts'
 import { backingRatio } from './camera.ts'
 import { drawMapSheet } from './map-sprites.ts'
+import { drawFoeRoster } from './view.ts'
 import { drawMinimap, reveal } from './minimap.ts'
 import { loadExtract, writeExtract } from './save.ts'
 import { ITEM_NAME, RARITY_COLOR, RARITY_NAME, STASH_SLOTS, type CoinRarity, type ItemUnit } from './coins.ts'
@@ -47,6 +48,9 @@ import {
   runCrates,
   inExtract,
   killRun,
+  nearestVein,
+  onStairs,
+  stairsOpen,
   freshValue,
   repairStack,
   insureHeld,
@@ -62,6 +66,7 @@ import {
   spendSupport,
   step,
   unequipSpear,
+  PROP_REACH,
   usableProp,
   useItem,
   warpFloor,
@@ -1290,11 +1295,13 @@ function paint(): void {
   const fieldBox = field.getBoundingClientRect()
   const hudBottom = bossBar.hidden ? bars.getBoundingClientRect().bottom : bossBar.getBoundingClientRect().bottom
   mapCanvas.style.top = `${Math.ceil(hudBottom - fieldBox.top) + 4}px`
-  const near = runCrates(run).some((crate) => crate.zone === run.zone && !run.opened.includes(crate.id) && Math.hypot(crate.x - run.x, crate.y - run.y) < 28)
+  const near = runCrates(run).some((crate) => crate.zone === run.zone && !run.opened.includes(crate.id) && Math.hypot(crate.x - run.x, crate.y - run.y) < PROP_REACH)
   const open = document.querySelector<HTMLButtonElement>('#open')!
   const propNear = usableProp(run)
-  open.hidden = !near && propNear == null
-  if (!open.hidden) open.textContent = t('hud.open')
+  const veinNear = propNear == null && !near ? nearestVein(run) : null
+  const stairsReady = onStairs(run) && stairsOpen(run)
+  open.hidden = !near && propNear == null && veinNear == null && !stairsReady
+  if (!open.hidden) open.textContent = stairsReady ? t('stairs.down') : veinNear ? t('hud.mine') : t('hud.open')
   const prize = claimTarget(run)
   const shrine = soulNear(run)
   const claim = document.querySelector<HTMLButtonElement>('#claim')!
@@ -1809,6 +1816,7 @@ declare global {
       reveal: () => string
       pose: (depth: number, kind: string) => { depth: number; theme: string; room: string; zone: string } | null
       mapSheet: () => void
+      foeSheet: () => void
     }
   }
 }
@@ -1884,6 +1892,15 @@ window.__npcsExtract = {
     board.width = 844
     board.height = 390
     drawMapSheet(pen, board.width, board.height)
+  },
+  foeSheet: () => {
+    sheetHold = true
+    const board = document.querySelector<HTMLCanvasElement>('#view')
+    const pen = board?.getContext('2d')
+    if (!board || !pen) return
+    board.width = 844
+    board.height = 780
+    drawFoeRoster(pen, board.width, board.height)
   },
   frameWork: () => {
     const sample = Array.from(frameWork.subarray(0, frameWorkN))
