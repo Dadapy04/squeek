@@ -1,5 +1,7 @@
 /** Procedural WebAudio for the delve. No sampled assets. */
 
+import { bindSoulOutput } from './soul-audio.ts'
+
 export interface AudioPref {
   muted: boolean
   /** Legacy master used by the soul-melter mix. Tracks the effects slider. */
@@ -278,6 +280,7 @@ function context(host: AudioHost | null): AudioContext | null {
     sfxGain = ctx.createGain()
     musicGain.connect(master)
     sfxGain.connect(master)
+    bindSoulOutput(ctx, sfxGain)
     return ctx
   } catch {
     return null

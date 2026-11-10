@@ -5,7 +5,7 @@ import { drawHero, drawMaw, drawWing } from './pose.ts'
 import { spearReach, spearRgb } from './spear.ts'
 import { bossDisplay, bossPattern, depthPlan, foeName, lineup, type AttackKind } from './depths.ts'
 import { t } from './i18n.ts'
-import { roomAt } from './dungeon.ts'
+import { doorPad, roomAt } from './dungeon.ts'
 import { drawThemeMotes, paintThemePlate, themeKit } from './tilesets.ts'
 import { foeCanvas, hasFoeSprite } from './foe-sprites.ts'
 import { blitMotif, interactable, mapLabel, spriteIdFor } from './map-sprites.ts'
@@ -1256,6 +1256,17 @@ function drawDungeonDress(
       continue
     }
     if (prop.state === 'spent') continue
+    if (prop.kind === 'crack' && prop.state === 'open') {
+      const room = run.chart ? roomAt(run.chart, prop.room) : null
+      const door = room?.doors.find((item) => item.lock === 'secret' && run.flags?.includes(`secret:${item.to}`))
+      if (door) {
+        const pad = doorPad(door.dir)
+        const gap = at(pad.x, pad.y)
+        ctx.fillStyle = '#e7c27a'
+        ctx.fillRect(Math.round(gap.x - 8 * scale), Math.round(gap.y - 2 * scale), Math.round(16 * scale), Math.max(3, 4 * scale))
+      }
+      continue
+    }
     const id = spriteIdFor(prop.kind, undefined, false, prop.state === 'open')
     const spot = at(prop.x, prop.y)
     placeMarked(ctx, at, scale, run, prop.x, prop.y, id, interactable(id))

@@ -350,6 +350,8 @@ export const DICT = {
   'room.dry': { id: 'Kolam kering', en: 'The pool is dry' },
   'room.shut': { id: 'Pintu masih tertutup', en: 'The door is still shut' },
   'room.crack': { id: 'Dinding retak terbuka', en: 'The cracked wall opens' },
+  'room.passage': { id: 'Lorong rahasia!', en: 'A hidden passage!' },
+  'room.cache': { id: 'Simpanan kecil', en: 'A small cache' },
   'room.key': { id: 'Kunci', en: 'Key' },
   'room.locked': { id: 'Peti masih terkunci', en: 'The chest is locked' },
   'room.boom': { id: 'Gentong meledak', en: 'The barrel blows' },

@@ -3,7 +3,7 @@ import { drawAssetSheet } from './patterns.ts'
 import { drawBlockStrip, drawCarryStrip, drawContactSheet, drawDirectionStrip, drawHoldStrip, drawSwingStrip, drawWalkStrip } from './pose.ts'
 import { paintTitleScreen, titleUsesDesktopPrompt } from './title.ts'
 import { clampCenter, followBase, stickVector } from './float-stick.ts'
-import { AUDIO_KEY, playBoom, playFuseTick, playSoulBurst, playSoulCharge, resumeAudio } from './soul-audio.ts'
+import { AUDIO_KEY, playBoom, playFuseTick, playSoulBurst, playSoulCharge, resumeAudio, soulBeat } from './soul-audio.ts'
 import { bedFor, cuesFromDelta, deltaFromSnaps, playBed, playBossFinale, playCue, playTorchCrackle, readAudioPref as readMix, unlockAudio, writeAudioPref, type Ear } from './game-audio.ts'
 import { armAttack, attackLive, blockSecondTap, disarmAttack, holdReleased, type AttackBuffer } from './input-lock.ts'
 import { bossTitle, drawChestStrip, drawExtract, drawGallery, drawLootStrip, drawRevealStrip, setEffectBudget } from './view.ts'
@@ -144,7 +144,7 @@ function requestStageFullscreen(): void {
   }
 }
 
-window.addEventListener('pointerdown', () => { resumeAudio(); unlockAudio(); requestStageFullscreen() }, { once: true })
+window.addEventListener('pointerdown', () => { unlockAudio(); resumeAudio(); requestStageFullscreen() }, { once: true })
 window.addEventListener('pointerdown', (event) => {
   const el = event.target instanceof Element ? event.target : null
   if (el?.closest('button')) playCue(el.closest('[data-set-lang]') ? 'ui.lang' : 'ui.tap', mixPref())
@@ -339,13 +339,13 @@ document.querySelector('#sellCommon')?.addEventListener('click', () => {
   const gained = sellCommon(save)
   const note = document.querySelector('#merchantNote')
   if (note) note.textContent = gained > 0 ? t('merchant.sold', { n: gained }) : t('merchant.none')
-  if (gained > 0) { writeExtract(storage, save); popCoins(gained); renderBase() }
+  if (gained > 0) { playCue('world.sell', mixPref()); writeExtract(storage, save); popCoins(gained); renderBase() }
 })
 function buyFromMerchant(kind: 'bandage' | 'p3k'): void {
   const result = buyGoods(save, kind)
   const note = document.querySelector('#merchantNote')
   if (note) note.textContent = result.ok ? t('merchant.bought', { name: t(kind === 'bandage' ? 'item.bandage' : 'item.p3k') }) : result.reason
-  if (result.ok) { writeExtract(storage, save); renderBase() }
+  if (result.ok) { playCue('world.buy', mixPref()); writeExtract(storage, save); renderBase() }
 }
 document.querySelector('#workshopClose')!.addEventListener('click', () => closeWorkshop())
 document.querySelector('#workshopNo')!.addEventListener('click', () => cancelWorkshop())
@@ -812,6 +812,7 @@ function confirmWorkshop(): void {
     const note = document.querySelector('#workshopNote')!
     note.textContent = result.ok ? result.note : result.reason
     if (result.ok) {
+      playCue('world.hammer', mixPref())
       writeExtract(storage, save)
       renderBase()
       paintWorkshop()
@@ -826,6 +827,7 @@ function confirmWorkshop(): void {
     const note = document.querySelector('#workshopNote')!
     note.textContent = result.ok ? result.note : result.reason
     if (result.ok) {
+      playCue('world.hammer', mixPref())
       writeExtract(storage, save)
       renderBase()
       paintWorkshop()
@@ -861,6 +863,22 @@ function audioPref() {
   return { muted: mix.muted, volume: mix.sfx }
 }
 let lastEar: Ear | null = null
+let floatCursor = 0
+function lineCue(text: string, playerHurt: boolean): 'player.miss' | 'player.glance' | 'player.crit' | 'player.hit' | 'foe.hurt' | 'world.lock' | 'world.crate' | 'world.chip' | 'world.full' | 'world.hazard' | 'world.trap' | 'world.lever' | 'world.slam' | 'world.fast' | null {
+  if (text === t('hit.miss')) return 'player.miss'
+  if (text === t('hit.glance') || text === t('hit.weak')) return 'player.glance'
+  if (text === t('hit.crit')) return 'player.crit'
+  if (text === t('room.locked')) return 'world.lock'
+  if (text === t('room.wood')) return 'world.crate'
+  if (text === t('hud.bagFull')) return 'world.full'
+  if (text === t('room.dark')) return 'world.hazard'
+  if (text === t('room.fall')) return 'world.trap'
+  if (text === t('room.door')) return 'world.lever'
+  if (text === t('room.wave') || text === t('room.ambush')) return 'world.slam'
+  if (text === t('prop.chip', { n: 1 }) || text === t('prop.chip', { n: 2 })) return 'world.chip'
+  if (/^\d+$/.test(text)) return playerHurt ? 'foe.hurt' : 'player.hit'
+  return null
+}
 function earOf(run: NonNullable<ExtractSave['run']>): Ear {
   const chart = run.chart
   const veins = chart?.veins ?? []
@@ -900,11 +918,19 @@ function hear(run: ExtractSave['run']): void {
   const pref = mixPref()
   if (!run || outcome) {
     lastEar = null
+    floatCursor = 0
     playBed(bedFor({ title: titleOpen, run: false }), pref)
     return
   }
+  const prevHp = lastEar?.hp
   const cues = cuesFromDelta(deltaFromSnaps(lastEar, earOf(run)))
   lastEar = earOf(run)
+  if (run.floats.length < floatCursor) floatCursor = 0
+  for (const line of run.floats.slice(floatCursor)) {
+    const cue = lineCue(line.text, prevHp != null && run.hp < prevHp - 0.5)
+    if (cue) playCue(cue, pref)
+  }
+  floatCursor = run.floats.length
   for (const cue of cues) {
     if (cue === 'fuse.tick' || cue === 'barrel.boom') continue
     if (cue === 'boss.die') {
@@ -913,6 +939,8 @@ function hear(run: ExtractSave['run']): void {
     }
     playCue(cue, pref)
   }
+  const roomNow = run.chart ? roomAt(run.chart, run.roomId) : null
+  if (cues.includes('world.door') && roomNow?.role === 'fast') playCue('world.fast', pref)
   const near = foeView(run).some((foe) => foe.hp > 0 && (foe.wind > 0 || (foe.heard ?? 0) > 0 || Math.hypot(foe.x - run.x, foe.y - run.y) < 130))
   const boss = run.foes.some((foe) => foe.kind === 'boss' && foe.room === run.roomId && foe.hp > 0 && !run.slain.includes(foe.id))
   playBed(bedFor({ run: true, depth: run.depth, combat: near, boss }), pref)
@@ -920,19 +948,12 @@ function hear(run: ExtractSave['run']): void {
   if (warm) playTorchCrackle(pref)
 }
 function watchSoul(run: NonNullable<ExtractSave['run']>): void {
-  const cast = run.soul?.cast ?? 0
-  const elapsed = cast > 0 ? SOUL_CAST - cast : 0
-  if (run.soul?.phase === 'live' && soulHeard !== 'live') {
-    soulHeard = 'live'
-    tone(220, 0.18, 'sine')
-  }
-  if (cast > 0 && elapsed < 0.25 && soulHeard !== 'wind') {
-    soulHeard = 'wind'
-    playSoulCharge(audioPref())
-  } else if (cast > 0 && elapsed >= 0.55 && soulHeard !== 'burst') {
-    soulHeard = 'burst'
-    playSoulBurst(audioPref())
-  } else if (cast <= 0 && run.soul?.phase !== 'live') soulHeard = run.soul?.phase ?? ''
+  unlockAudio()
+  const next = soulBeat(soulHeard, run.soul?.phase, run.soul?.cast ?? 0, SOUL_CAST)
+  if (next.heard === 'live' && soulHeard !== 'live') tone(220, 0.18, 'sine')
+  soulHeard = next.heard
+  if (next.beat === 'charge') playSoulCharge(audioPref())
+  if (next.beat === 'burst') playSoulBurst(audioPref())
 }
 function tone(freq: number, seconds: number, type: OscillatorType): void {
   const pref = audioPref()
@@ -1129,8 +1150,10 @@ function frame(now: number): void {
       const now = performance.now()
       const input = readInput()
       if (input.interact && save.run) {
+        const purse = save.coins
         const note = fieldBuy(save, 'bandage')
         if (note) save.run.floats.push({ text: note, life: 1.6 })
+        else if (save.coins < purse) playCue('world.buy', mixPref())
       }
       const cdBefore = save.run.attackCd
       const next = step(save.run, input, dt)

@@ -50,8 +50,29 @@ type AudioHost = { AudioContext?: AudioCtor; webkitAudioContext?: AudioCtor }
 let shared: AudioContext | null = null
 let master: GainNode | null = null
 let tailBuffer: AudioBuffer | null = null
+let injected = false
+let peakScale = 1
+export const soulHooks = { charge: 0, burst: 0 }
+
+/** Play through the shared effects bus so iOS unlocks one context for every sound. */
+export function bindSoulOutput(ctx: AudioContext, dest: GainNode): void {
+  shared = ctx
+  master = dest
+  injected = true
+}
+
+/** Charge during the windup, burst once the cast crosses the hit. Each returns at most once per cast. */
+export function soulBeat(heard: string, phase: string | undefined, cast: number, span: number): { heard: string; beat: 'charge' | 'burst' | null } {
+  if (phase === 'live' && heard !== 'live') return { heard: 'live', beat: null }
+  const elapsed = cast > 0 ? span - cast : 0
+  if (cast > 0 && elapsed < 0.25 && heard !== 'wind') return { heard: 'wind', beat: 'charge' }
+  if (cast > 0 && elapsed >= 0.55 && heard !== 'burst') return { heard: 'burst', beat: 'burst' }
+  if (cast <= 0 && phase !== 'live') return { heard: phase ?? '', beat: null }
+  return { heard, beat: null }
+}
 
 function context(host: AudioHost | null): AudioContext | null {
+  if (injected && shared) return shared
   const Ctx = host?.AudioContext ?? host?.webkitAudioContext
   if (!Ctx) return null
   if (shared) return shared
@@ -103,7 +124,7 @@ function impulse(ctx: AudioContext): AudioBuffer {
 
 function envGain(ctx: AudioContext, mixGain: GainNode, peak: number, attack: number, sustain: number, release: number, when: number): GainNode {
   const gain = ctx.createGain()
-  const top = Math.max(0.0001, peak)
+  const top = Math.max(0.0001, peak * peakScale)
   gain.gain.setValueAtTime(0.0001, when)
   gain.gain.exponentialRampToValueAtTime(top, when + attack)
   gain.gain.setValueAtTime(top, when + attack + sustain)
@@ -114,6 +135,11 @@ function envGain(ctx: AudioContext, mixGain: GainNode, peak: number, attack: num
 
 function applyMaster(mix: SoulMix): void {
   if (!master) return
+  if (injected) {
+    peakScale = mix.master
+    return
+  }
+  peakScale = 1
   master.gain.value = mix.master
 }
 
@@ -130,6 +156,7 @@ function release(node: AudioNode): void {
 }
 
 export function playSoulCharge(pref: AudioPref, host: AudioHost | null = typeof window === 'undefined' ? null : window, when?: number): void {
+  soulHooks.charge += 1
   const mix = soulMix(pref)
   if (mix.master <= 0) return
   const ctx = context(host)
@@ -170,6 +197,7 @@ export function playSoulCharge(pref: AudioPref, host: AudioHost | null = typeof 
 }
 
 export function playSoulBurst(pref: AudioPref, host: AudioHost | null = typeof window === 'undefined' ? null : window, when?: number): void {
+  soulHooks.burst += 1
   const mix = soulMix(pref)
   if (mix.master <= 0) return
   const ctx = context(host)

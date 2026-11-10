@@ -364,7 +364,7 @@ function placeVeins(rooms: RoomNode[], depth: number, salt: number, rand: () => 
     })
   }
   if (depth >= 3 && rand() < 0.5) {
-    const host = rooms.find((room) => room.role === 'elite' || room.role === 'secret' || room.role === 'fast')
+    const host = rooms.find((room) => room.role === 'secret') ?? rooms.find((room) => room.role === 'elite' || room.role === 'fast')
     if (host) {
       const rolled = oreRoll(depth, salt + 99, true)
       veins.push({
@@ -391,10 +391,13 @@ function placeProps(rooms: RoomNode[], depth: number, rand: () => number): PropN
       props.push(prop(room, 'vendor', 10, 20, []))
     }
     if (room.role === 'rest') props.push(prop(room, 'shrine', 0, 10, []))
-    if (room.role === 'secret') props.push(prop(room, 'crack', -40, 30, []))
-    if (room.role === 'treasure' || room.role === 'secret' || room.role === 'fast') {
+    if (room.role === 'treasure' || room.role === 'fast') {
       const loot: ItemKind[] = depth >= 5 ? ['relic', 'shard'] : depth >= 3 ? ['ore', 'shard'] : ['scrap', 'ore']
       props.push({ ...prop(room, 'chest', 24, -10, loot), lock: room.role === 'treasure' ? 'key' : 'none' })
+    }
+    if (room.role === 'secret') {
+      const loot: ItemKind[] = depth >= 5 ? ['relic', 'shard', 'ore'] : depth >= 3 ? ['relic', 'ore'] : ['ore', 'shard']
+      props.push({ ...prop(room, 'chest', 24, -10, loot), lock: 'none' })
     }
     if (room.role === 'trap' || room.layout === 'cross' || room.layout === 'lane') {
       props.push(prop(room, 'barrel', -20, 36, []))
@@ -435,6 +438,21 @@ function placeSpawns(rooms: RoomNode[], depth: number, rand: () => number): Spaw
   const spawns: SpawnNode[] = []
   for (const room of rooms) {
     if (room.zone !== 'kamar') continue
+    if (room.role === 'secret' && depth >= 4) {
+      const breed = room.mix[0] ?? 'crab'
+      spawns.push({
+        id: `${room.id}-guard`,
+        room: room.id,
+        zone: 'kamar',
+        kind: breed === 'boss' ? 'crab' : breed,
+        breed,
+        x: 16,
+        y: 22,
+        hp: Math.round(36 + depth * 14),
+        damage: 10 + depth * 3,
+        elite: false,
+      })
+    }
     if (room.role !== 'combat' && room.role !== 'elite' && room.role !== 'fast' && room.role !== 'trap') continue
     const crowd = room.role === 'elite' || room.role === 'fast' ? 1 : Math.min(5, 1 + Math.floor(depth / 2))
     for (let i = 0; i < crowd; i += 1) {

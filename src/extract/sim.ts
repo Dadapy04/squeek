@@ -3,7 +3,7 @@ import { currentLocale, t, type MsgKey } from './i18n.ts'
 import { BOSS_RAGE_SEC, DEPTH_CAP, DEPTHS, bladeDisplay, bossChip, bossDisplay, bossPattern, bossPhaseOf, depthPlan, foeChip, frontGuarded, GUARD_FACTOR, makeBlade, rageMul, recommendDamage, type Blade, type Breed } from './depths.ts'
 import { bagSlotsOf, blockArc, isRichOre, MERCHANT, nextBagUpgrade, shieldMaxFor, swordBonusPct, swordDamage, upgradeCost, upgradeOre, type MerchantKind } from './economy.ts'
 import { SPEAR_ACTIVE, SPEAR_ARC, SPEAR_TOTAL, SPEAR_WIND, critLands, rollSpear, spearBossBonus, spearPower, spearReach, type Spear } from './spear.ts'
-import { doorPad, generateFloor, layoutShift, nearPad, oreValue, roomAt, spineRoom, type FloorChart, type PropNode, type RoomNode, type SpawnNode, type VeinNode } from './dungeon.ts'
+import { doorPad, generateFloor, layoutShift, nearPad, oreRoll, oreValue, roomAt, spineRoom, type FloorChart, type OreKind, type PropNode, type RoomNode, type SpawnNode, type VeinNode } from './dungeon.ts'
 
 /** Pixel extraction run. Local item counts only. Not SQK, not a wave arena. */
 
@@ -2622,11 +2622,41 @@ function chipCrack(run: Run, prop: PropNode): void {
     return
   }
   const room = run.chart ? roomAt(run.chart, run.roomId) : null
-  const door = room?.doors.find((item) => item.lock === 'secret')
-  if (door) run.flags = [...(run.flags ?? []), `secret:${door.to}`]
+  const dir = /-(n|e|s|w)$/.exec(prop.id)?.[1]
+  const door = room?.doors.find((item) => item.lock === 'secret' && (!dir || item.dir === dir))
+    ?? room?.doors.find((item) => item.lock === 'secret')
   prop.state = 'open'
   prop.hp = 0
-  float(run, t('room.crack'))
+  if (door) {
+    run.flags = [...(run.flags ?? []), `secret:${door.to}`]
+    if (!run.seenRooms) run.seenRooms = []
+    if (!run.seenRooms.includes(door.to)) run.seenRooms.push(door.to)
+    float(run, t('room.passage'))
+    return
+  }
+  grantCrackCache(run, prop)
+  float(run, t('room.cache'))
+}
+
+function grantCrackCache(run: Run, prop: PropNode): void {
+  const depth = run.depth || 1
+  const rolled = oreRoll(depth, mixSeed(prop.id.length * 17 + (run.seed || 1)), false)
+  const bonusRoll = mixSeed(prop.id.length + depth * 3) % 7
+  const bonus: ItemKind = depth >= 5 && bonusRoll === 0 ? 'relic' : depth >= 3 && bonusRoll <= 1 ? 'shard' : 'scrap'
+  const bonusRarity = bonus === 'relic' ? 'pusaka' : bonus === 'shard' ? 'langka' : 'biasa'
+  const pair: Array<{ kind: ItemKind; rarity: CoinRarity; coins: number; metal?: OreKind }> = [
+    { kind: bonus, rarity: bonusRarity, coins: oreValue(bonusRarity, mixSeed(prop.id.length + 3)) },
+    { kind: 'ore', rarity: rolled.rarity, coins: oreValue(rolled.rarity, mixSeed(prop.id.length + 9)), metal: rolled.ore },
+  ]
+  pair.forEach((item, index) => {
+    layDrop(run, {
+      id: `${prop.id}-cache-${item.kind}`,
+      kind: item.kind,
+      x: 0,
+      y: 0,
+      unit: { rarity: item.rarity, coins: item.coins, origin: 'loot', metal: item.metal },
+    }, prop.x, prop.y, index, pair.length)
+  })
 }
 
 function useProps(run: Run): boolean {
