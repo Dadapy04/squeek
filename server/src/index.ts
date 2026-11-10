@@ -211,7 +211,8 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
   if (request.method === 'GET' && path === '/v1/account') {
     if (!address) return json({ error: 'unauthorized' }, 401)
     const loaded = await loadAccount(env, address, now)
-    return json({ revision: loaded.revision, state: loaded.account })
+    const settled = await abandonOpenRuns(env, address, loaded.account, now)
+    return json({ revision: settled.revision ?? loaded.revision, state: loaded.account, abandoned: settled.abandoned })
   }
 
   if (request.method === 'POST' && path.startsWith('/v1/act/')) {
@@ -232,16 +233,18 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
     if (!await allow(env.DB, `start:${address}`, 12, NONCE_MS, now)) return json({ error: 'rate' }, 429)
     const body = await readJson(request)
     const loaded = await loadAccount(env, address, now)
+    const settled = await abandonOpenRuns(env, address, loaded.account, now)
+    const abandoned = settled.abandoned
     const id = crypto.randomUUID()
     const picks = Array.isArray(body?.picks) ? body.picks as Pick[] : []
     const started = startRun(loaded.account, picks, body?.bringShield === true, id)
-    if (!started.ok) return json({ error: started.reason, state: loaded.account }, 422)
+    if (!started.ok) return json({ error: started.reason, state: loaded.account, abandoned }, 422)
     const seed = crypto.getRandomValues(new Uint32Array(1))[0]! || 1
     const exp = now + 6 * 60 * 60 * 1000
     const token = await issueToken(env, { id, address, seed, iat: now, exp })
     await env.DB.prepare('INSERT INTO runs (id, address, seed, token_hash, status, issued_at) VALUES (?, ?, ?, ?, ?, ?)').bind(id, address, seed, await sha256(token), 'open', now).run()
     const revision = await storeAccount(env, address, loaded.account, now)
-    return json({ runId: id, seed, token, issuedAt: now, expiresAt: exp, revision, state: loaded.account })
+    return json({ runId: id, seed, token, issuedAt: now, expiresAt: exp, revision, state: loaded.account, abandoned })
   }
 
   if (request.method === 'POST' && path === '/v1/runs/die') {
@@ -312,6 +315,17 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
   }
 
   return json({ error: 'not-found' }, 404)
+}
+
+/** A closed tab, refresh, or disconnect used to leave the delve open forever. Treat that as a death. */
+async function abandonOpenRuns(env: Env, address: string, account: Account, now: number): Promise<{ abandoned: boolean; revision: number | null }> {
+  const open = await env.DB.prepare(`SELECT id FROM runs WHERE address = ? AND status = 'open'`).bind(address).all<{ id: string }>()
+  const stuck = account.activeRun != null || open.results.length > 0
+  if (!stuck) return { abandoned: false, revision: null }
+  if (account.activeRun) applyDeath(account, 1)
+  await env.DB.prepare(`UPDATE runs SET status = 'dead', reason = 'abandoned', depth = COALESCE(depth, 1) WHERE address = ? AND status = 'open'`).bind(address).run()
+  const revision = await storeAccount(env, address, account, now)
+  return { abandoned: true, revision }
 }
 
 async function loadAccount(env: Env, address: string, now: number): Promise<{ account: Account; revision: number }> {

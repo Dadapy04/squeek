@@ -143,7 +143,7 @@ Open http://127.0.0.1:47331 . On the base screen you should see Connect wallet. 
 - Connect wallet asks for a signature only. There is no transaction, no token approval, and no chain switch from the game. The signature proves the address.
 - Disconnect forgets the session and puts the untouched guest save back. Connecting does not upload that guest save.
 - A wallet account lives on the server and starts at zero: coins, stash, bag, and workshop levels. The server checks every sale, purchase, upgrade, and delve. The browser does not upload a save blob for a wallet.
-- A ranked clear needs a run token from the server at the start. The server checks the time, the loot log, and coin bands. A failed check restores the loadout and refuses the rank board. Head out while signed in and offline stays on the base.
+- A ranked clear needs a run token from the server at the start. The server checks the time, the loot log, and coin bands. A failed check restores the loadout and the result screen says it was not ranked. Closing the tab or signing in again counts an unfinished delve as a loss, so an old run cannot block Head out.
 - The board has best haul and deepest floor, for this week and for all time. Flagged runs are stored and are not shown.
 
 ## If something fails

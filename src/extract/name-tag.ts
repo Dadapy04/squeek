@@ -17,6 +17,11 @@ export function shortAddress(address: string): string {
   return `${clean.slice(0, 6)}…${clean.slice(-4)}`
 }
 
+/** A blank profile keeps the short address until the player types a name. */
+export function needsNickname(name: string | null | undefined): boolean {
+  return !(name && name.trim())
+}
+
 /** Nickname when one is saved, otherwise the short address. */
 export function nameTagLabel(name: string | null | undefined, address: string): string {
   const nick = name?.trim() ?? ''

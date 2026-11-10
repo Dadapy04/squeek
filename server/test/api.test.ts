@@ -147,6 +147,21 @@ describe('worker endpoints', () => {
     expect(values).toEqual([20])
   })
 
+  it('counts an abandoned open delve as a death and lets the next one start', async () => {
+    const token = await login()
+    const auth = { authorization: `Bearer ${token}`, 'content-type': 'application/json' }
+    const started = await json('/v1/runs/start', { method: 'POST', headers: auth, body: JSON.stringify({ picks: [{ kind: 'sword', n: 1 }] }) })
+    expect(started.status).toBe(200)
+    const account = await json('/v1/account', { headers: auth })
+    expect(account.body.abandoned).toBe(true)
+    const state = account.body.state as { activeRun: unknown; stash: { kind: string; n: number }[] }
+    expect(state.activeRun).toBeNull()
+    expect(state.stash.some((stack) => stack.kind === 'sword' && stack.n >= 1)).toBe(true)
+    const again = await json('/v1/runs/start', { method: 'POST', headers: auth, body: '{}' })
+    expect(again.status).toBe(200)
+    expect(again.body.abandoned).toBe(false)
+  })
+
   it('rejects a blob upload even with no session', async () => {
     const denied = await json('/v1/save', { method: 'PUT', body: JSON.stringify({ blob: '{}' }) })
     expect(denied.status).toBe(410)

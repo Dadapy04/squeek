@@ -1,11 +1,12 @@
 import { apiUrl, onlineEnabled, phoneLayout, walletButtons, walletConnectId } from './online-flag.ts'
-import { nameTagLabel, paintBasePortrait, setNameTag, shortAddress } from './name-tag.ts'
+import { nameTagLabel, needsNickname, paintBasePortrait, setNameTag, shortAddress } from './name-tag.ts'
 import type { RunReport } from './run-report.ts'
 import { EXTRACT_SAVE_KEY, loadExtract, setPersistSuspended } from './save.ts'
 import { t } from './i18n.ts'
 import type { ExtractSave } from './sim.ts'
 
 const SESSION_KEY = 'npcs-burrow-pixel-extract.session.v1'
+const RUN_KEY = 'npcs-burrow-pixel-extract.run.v1'
 interface Session {
   token: string
   address: string
@@ -86,7 +87,7 @@ function paintAccountBadge(address: string | null, name: string | null): void {
       badge.append(document.createTextNode(t('online.guest')))
       continue
     }
-    if (nick) {
+    if (nick && needsNickname(nick) === false) {
       const strong = document.createElement('b')
       strong.textContent = nick.slice(0, 16)
       badge.append(strong)
@@ -96,6 +97,8 @@ function paintAccountBadge(address: string | null, name: string | null): void {
     tail.textContent = addr
     badge.append(tail)
   }
+  const ask = document.getElementById('walletNameAsk')
+  if (ask) ask.hidden = !live || !needsNickname(name)
 }
 
 let toastTimer = 0
@@ -201,14 +204,15 @@ async function signIn(provider: Eip1193): Promise<void> {
     refreshOnline()
     return
   }
-  const body = await account.json() as { state: unknown }
+  const body = await account.json() as { state: unknown; abandoned?: boolean }
   guestBlob = hooks.storage?.getItem(EXTRACT_SAVE_KEY) ?? ''
   setPersistSuspended(true)
   hooks.setSave(saveFromBlob(JSON.stringify(body.state)))
   const name = document.getElementById('walletName') as HTMLInputElement | null
   if (name) name.value = session.name ?? ''
   refreshOnline()
-  showAccountToast(t('online.toastOn'))
+  if (needsNickname(session.name)) name?.focus()
+  showAccountToast(body.abandoned ? t('online.abandoned') : t('online.toastOn'))
 }
 
 async function connectInjected(): Promise<void> {
@@ -256,6 +260,7 @@ async function connectWalletConnect(): Promise<void> {
 
 async function disconnect(): Promise<void> {
   if (!hooks) return
+  if (runToken) await noteDeath(1)
   try { await api('/v1/auth/logout', { method: 'POST' }) } catch { /* local sign-out still happens */ }
   const kept = guestBlob
   guestBlob = null
@@ -320,10 +325,11 @@ export async function takeRunSeed(picks: { kind: string; n: number }[] = [], bri
   if (!onlineEnabled() || !hooks || !readSession(hooks.storage)) return undefined
   try {
     const response = await api('/v1/runs/start', { method: 'POST', body: JSON.stringify({ picks, bringShield }) })
-    const body = await response.json().catch(() => ({})) as { seed?: number; token?: string; error?: string; state?: { activeRun?: unknown } }
+    const body = await response.json().catch(() => ({})) as { seed?: number; token?: string; error?: string; abandoned?: boolean; state?: { activeRun?: unknown } }
+    if (body.abandoned) showAccountToast(t('online.abandoned'))
+    if (body.state && walletLive()) hooks.setSave(saveFromBlob(JSON.stringify({ ...body.state, activeRun: null })))
     if (!response.ok || !body.token || body.seed == null) return { seed: 0, token: '', error: body.error ?? 'offline' }
     const carried = body.state?.activeRun
-    if (body.state && walletLive()) hooks.setSave(saveFromBlob(JSON.stringify({ ...body.state, activeRun: null })))
     return { seed: body.seed, token: body.token, state: body.state, carried }
   } catch {
     return undefined
@@ -332,56 +338,97 @@ export async function takeRunSeed(picks: { kind: string; n: number }[] = [], bri
 
 export function armRun(token: string | undefined): void {
   runToken = token ?? null
+  if (!hooks?.storage) return
+  if (!token) hooks.storage.removeItem(RUN_KEY)
+  else hooks.storage.setItem(RUN_KEY, JSON.stringify({ token }))
 }
 
-function rejectText(body: { reason?: string; depth?: number; elapsedMs?: number }): string {
+function rejectText(body: { reason?: string; error?: string; depth?: number; elapsedMs?: number }): string {
   const depth = body.depth ?? 1
   const sec = Math.max(0, Math.round((body.elapsedMs ?? 0) / 1000))
-  if (body.reason === 'too-fast') return t('online.why.fast', { depth, sec })
-  if (body.reason === 'cap') return t('online.why.cap', { depth })
-  if (body.reason === 'coins') return t('online.why.coins')
-  if (body.reason === 'total') return t('online.why.total')
-  if (body.reason === 'depth') return t('online.why.depth')
-  if (body.reason === 'log') return t('online.why.log')
-  if (body.reason === 'time') return t('online.why.time')
-  if (body.reason === 'token') return t('online.why.token')
+  const reason = body.reason || body.error
+  if (reason === 'too-fast') return t('online.why.fast', { depth, sec })
+  if (reason === 'cap') return t('online.why.cap', { depth })
+  if (reason === 'coins') return t('online.why.coins')
+  if (reason === 'total') return t('online.why.total')
+  if (reason === 'depth') return t('online.why.depth')
+  if (reason === 'log') return t('online.why.log')
+  if (reason === 'time') return t('online.why.time')
+  if (reason === 'token') return t('online.why.token')
   return t('online.rejected')
 }
 
-export async function noteExtract(report: RunReport): Promise<boolean> {
-  if (!runToken || !hooks || !readSession(hooks.storage)) return false
+export interface RunNotice {
+  ok: boolean
+  ranked: boolean | null
+  message: string
+}
+
+function notRanked(reason: string): string {
+  return t('online.notRanked', { reason })
+}
+
+function tellRank(message: string): void {
+  setText('cloudStatus', message)
+  showAccountToast(message)
+}
+
+export async function noteExtract(report: RunReport): Promise<RunNotice> {
+  if (!runToken || !hooks || !readSession(hooks.storage)) {
+    const message = notRanked(t('online.why.token'))
+    tellRank(message)
+    return { ok: false, ranked: false, message }
+  }
   const token = runToken
   try {
     const response = await api('/v1/runs/extract', { method: 'POST', body: JSON.stringify({ token, ...report }) })
-    const body = await response.json().catch(() => ({})) as { reason?: string; depth?: number; elapsedMs?: number; ranked?: boolean; state?: unknown }
+    const body = await response.json().catch(() => ({})) as { reason?: string; error?: string; depth?: number; elapsedMs?: number; ranked?: boolean; state?: unknown }
     if (body.state) hooks.setSave(saveFromBlob(JSON.stringify(body.state)))
     if (!response.ok) {
-      setText('cloudStatus', rejectText(body))
-      return false
+      const message = notRanked(rejectText(body))
+      tellRank(message)
+      if (body.state) armRun(undefined)
+      return { ok: false, ranked: false, message }
     }
-    runToken = null
-    if (body.ranked === false) setText('cloudStatus', t('online.flagged'))
-    else setText('cloudStatus', t('online.synced'))
-    return true
+    armRun(undefined)
+    if (body.ranked === false) {
+      const message = notRanked(t('online.flagged'))
+      tellRank(message)
+      return { ok: true, ranked: false, message }
+    }
+    const message = t('online.ranked')
+    setText('cloudStatus', message)
+    return { ok: true, ranked: true, message }
   } catch {
-    setText('cloudStatus', t('online.offline'))
-    return false
+    const message = notRanked(t('online.why.net'))
+    tellRank(message)
+    return { ok: false, ranked: null, message }
   }
 }
 
-export async function noteDeath(depth: number): Promise<boolean> {
-  if (!runToken || !hooks || !readSession(hooks.storage)) return false
+export async function noteDeath(depth: number): Promise<RunNotice> {
+  if (!runToken || !hooks || !readSession(hooks.storage)) {
+    const message = notRanked(t('online.why.token'))
+    tellRank(message)
+    return { ok: false, ranked: false, message }
+  }
   const token = runToken
   try {
     const response = await api('/v1/runs/die', { method: 'POST', body: JSON.stringify({ token, depth }) })
-    const body = await response.json().catch(() => ({})) as { state?: unknown }
+    const body = await response.json().catch(() => ({})) as { state?: unknown; error?: string }
     if (body.state) hooks.setSave(saveFromBlob(JSON.stringify(body.state)))
-    if (!response.ok) return false
-    runToken = null
-    return true
+    if (!response.ok) {
+      const message = notRanked(t('online.why.net'))
+      tellRank(message)
+      return { ok: false, ranked: false, message }
+    }
+    armRun(undefined)
+    const message = notRanked(t('online.why.dead'))
+    return { ok: true, ranked: false, message }
   } catch {
-    setText('cloudStatus', t('online.offline'))
-    return false
+    const message = notRanked(t('online.why.net'))
+    tellRank(message)
+    return { ok: false, ranked: null, message }
   }
 }
 
@@ -430,5 +477,32 @@ export function mountOnline(next: Hooks): void {
   const all = document.getElementById('boardAll')
   if (value) value.dataset.on = '1'
   if (all) all.dataset.on = '1'
+  window.addEventListener('pagehide', () => { leaveRun() })
+  void recoverStoredRun()
   refreshOnline()
+}
+
+function leaveRun(): void {
+  if (!runToken || !hooks || !onlineEnabled()) return
+  const session = readSession(hooks.storage)
+  if (!session) return
+  void fetch(`${apiUrl()}/v1/runs/die`, {
+    method: 'POST',
+    keepalive: true,
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${session.token}` },
+    body: JSON.stringify({ token: runToken, depth: 1 }),
+  })
+}
+
+async function recoverStoredRun(): Promise<void> {
+  if (!hooks?.storage) return
+  const raw = hooks.storage.getItem(RUN_KEY)
+  if (!raw || !readSession(hooks.storage)) return
+  let token = ''
+  try { token = String((JSON.parse(raw) as { token?: string }).token ?? '') } catch { token = '' }
+  if (!token) return
+  try {
+    const response = await api('/v1/runs/die', { method: 'POST', body: JSON.stringify({ token, depth: 1 }) })
+    if (response.ok || response.status === 409 || response.status === 401) hooks.storage.removeItem(RUN_KEY)
+  } catch { /* the next sign-in closes a delve that is still open */ }
 }

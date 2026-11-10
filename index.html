@@ -43,6 +43,7 @@
             <button id="walletWc" type="button" data-i18n="online.walletConnect">WalletConnect</button>
             <button id="walletOut" type="button" data-i18n="online.disconnect">Disconnect</button>
           </div>
+          <p id="walletNameAsk" hidden data-i18n="online.askName">Pick a nickname. A blank name shows the short address. You can rename it here.</p>
           <label id="walletNameLabel" class="mix"><span data-i18n="online.nickname">Nickname</span><input id="walletName" maxlength="16" autocomplete="off" /></label>
           <button id="walletNameSave" type="button" data-i18n="online.saveName">Save name</button>
           <p id="cloudStatus"></p>
@@ -254,6 +255,7 @@
           <ul id="resultLoot"></ul>
         </div>
         <p id="resultValue"></p>
+        <p id="resultRank" hidden></p>
         <button id="again" class="primary" type="button" data-i18n="result.again">Back to base</button>
       </div>
     </section>

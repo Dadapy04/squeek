@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DICT } from '../src/extract/i18n.ts'
-import { nameTagLabel, placeNameTag, shortAddress } from '../src/extract/name-tag.ts'
+import { nameTagLabel, needsNickname, placeNameTag, shortAddress } from '../src/extract/name-tag.ts'
 
 describe('wallet name tag', () => {
   it('uses the nickname, and the short address when there is none', () => {
@@ -10,6 +10,9 @@ describe('wallet name tag', () => {
     expect(nameTagLabel('  ', address)).toBe('0x1234…abcd')
     expect(nameTagLabel(null, address)).toBe('0x1234…abcd')
     expect(nameTagLabel('A very long nickname indeed', address)).toBe('A very long nick')
+    expect(needsNickname(null)).toBe(true)
+    expect(needsNickname('   ')).toBe(true)
+    expect(needsNickname('Squeek')).toBe(false)
   })
 
   it('floats the tag above the hamster and steps it off a foe', () => {

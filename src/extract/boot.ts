@@ -240,6 +240,7 @@ async function beginDeploy(): Promise<void> {
 function startRefusal(code?: string): string {
   if (code === 'short' || code === 'missing') return t('err.stashShort')
   if (code === 'bag') return t('err.bagSlots', { n: bagSlotsOf(save.bagSlots) })
+  if (code === 'run-live') return t('online.runLive')
   return t('online.offlineRun')
 }
 
@@ -1392,8 +1393,9 @@ function carriedRows(run: NonNullable<ExtractSave['run']>): ResultRow[] {
 }
 
 let finishing = false
+let finishHold = 0
 function finish(kind: 'extracted' | 'dead'): void {
-  if (finishing) return
+  if (finishing || performance.now() < finishHold) return
   const carried = save.run ? carriedRows(save.run) : []
   const gained = save.run ? freshValue(save.run) : 0
   const report = kind === 'extracted' && save.run ? reportFromRun(save.run) : null
@@ -1412,23 +1414,20 @@ function finish(kind: 'extracted' | 'dead'): void {
 }
 
 async function finishWallet(kind: 'extracted' | 'dead', report: ReturnType<typeof reportFromRun> | null, carried: ResultRow[], gained: number, depth: number): Promise<void> {
-  const ok = kind === 'extracted' && report ? await noteExtract(report) : await noteDeath(depth)
-  const cloud = document.querySelector('#cloudStatus')?.textContent ?? ''
-  if (!ok) {
-    if (save.run) save.run.channel = 0
-    else show('base')
+  const notice = kind === 'extracted' && report ? await noteExtract(report) : await noteDeath(depth)
+  if (!notice.ok && save.run) {
+    save.run.channel = 0
+    finishHold = performance.now() + 2000
     renderBase()
-    if (cloud) document.querySelector('#cloudStatus')!.textContent = cloud
     return
   }
   outcome = kind
   lastResult = { kind, rows: carried, gained }
-  paintResult(kind, carried, gained)
+  paintResult(kind, carried, gained, notice.message)
   renderBase()
-  if (cloud) document.querySelector('#cloudStatus')!.textContent = cloud
 }
 
-function paintResult(kind: 'extracted' | 'dead', carried: ResultRow[], gained: number): void {
+function paintResult(kind: 'extracted' | 'dead', carried: ResultRow[], gained: number, rank = ''): void {
   const title = document.querySelector('#resultTitle')!
   const body = document.querySelector('#resultBody')!
   const loot = document.querySelector('#resultLoot')!
@@ -1467,6 +1466,11 @@ function paintResult(kind: 'extracted' | 'dead', carried: ResultRow[], gained: n
   })
   const fresh = Number.isFinite(gained) ? gained : 0
   value.textContent = kind === 'extracted' ? t('result.fresh', { n: fresh }) : t('result.noGain')
+  const rankEl = document.querySelector<HTMLElement>('#resultRank')
+  if (rankEl) {
+    rankEl.textContent = rank
+    rankEl.hidden = rank.length === 0
+  }
   show('result')
   requestAnimationFrame(fitLootRows)
 }
