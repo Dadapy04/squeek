@@ -138,7 +138,7 @@ describe('worker endpoints', () => {
         token: richStart.body.token,
         depth: 1,
         value: 700,
-        events: [{ kind: 'depth', depth: 1 }, ...coins.map((coin) => ({ kind: 'loot', item: 'bilah', coins: coin })), { kind: 'extract', depth: 1 }],
+        events: [{ kind: 'depth', depth: 1 }, ...coins.map((coin) => ({ kind: 'loot', item: 'tombak', coins: coin })), { kind: 'extract', depth: 1 }],
       }),
     })
     expect(flagged.body.ranked).toBe(false)

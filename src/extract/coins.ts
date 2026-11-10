@@ -43,7 +43,7 @@ export const ITEM_NAME = liveName('item') as Record<ItemKind, string>
 
 export const STASH_SLOTS = 20
 
-const ROLL: Record<ItemKind, CoinRarity[]> = {
+export const MINT_RARITIES: Record<ItemKind, CoinRarity[]> = {
   sword: ['biasa'],
   bandage: ['biasa', 'biasa', 'biasa', 'biasa', 'langka'],
   tonic: ['biasa', 'biasa', 'biasa', 'langka'],
@@ -70,7 +70,7 @@ export function coinsFor(rarity: CoinRarity, seed: number): number {
 }
 
 export function rarityForKind(kind: ItemKind, seed: number): CoinRarity {
-  const table = ROLL[kind]
+  const table = MINT_RARITIES[kind]
   return table[mixSeed(seed) % table.length]!
 }
 

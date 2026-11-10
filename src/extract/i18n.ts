@@ -156,7 +156,7 @@ export const DICT = {
   'online.rejected': { id: 'Selesai ini tidak masuk papan.', en: 'This clear was not ranked.' },
   'online.why.fast': { id: 'Terlalu cepat untuk lantai {depth} ({sec} dtk). Tidak masuk papan.', en: 'Too fast for floor {depth} ({sec}s). Not ranked.' },
   'online.why.cap': { id: 'Nilai terlalu besar untuk lantai {depth}.', en: 'The haul is too big for floor {depth}.' },
-  'online.why.coins': { id: 'Ada nilai di luar pita.', en: 'A coin value is outside the allowed band.' },
+  'online.why.coins': { id: 'Ada nilai di luar pita. Hasil tidak disimpan.', en: 'A coin value is outside the allowed band. The haul was not stored.' },
   'online.why.total': { id: 'Jumlah tidak cocok dengan catatan.', en: 'The total does not match the log.' },
   'online.why.depth': { id: 'Lantai tidak cocok.', en: 'The floor does not match.' },
   'online.why.log': { id: 'Catatan lari tidak lengkap.', en: 'The run log is incomplete.' },

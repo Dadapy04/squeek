@@ -3,6 +3,7 @@
  * Guest play does not use this module.
  */
 import { mintUnit, type ItemUnit } from '../src/extract/coins.ts'
+import { coinFits } from './loot-law.ts'
 import {
   MERCHANT,
   bagSlotsOf,
@@ -89,23 +90,7 @@ export interface Account {
 export type Fail = { ok: false; reason: string }
 export type Ok<T> = { ok: true } & T
 
-const KIND_BANDS: Record<string, [number, number][]> = {
-  bandage: [[4, 14], [18, 32]],
-  tonic: [[4, 14], [18, 32]],
-  scrap: [[4, 14], [18, 32]],
-  ore: [[4, 14], [18, 32]],
-  shard: [[18, 32], [36, 54]],
-  relic: [[36, 54], [60, 88]],
-  p3k: [[4, 14]],
-  tombak: [[18, 32], [36, 54], [60, 88]],
-  bilah: [[36, 54], [60, 88]],
-}
-
-export function coinFits(kind: string, coins: number): boolean {
-  const bands = KIND_BANDS[kind]
-  if (!bands || !Number.isInteger(coins)) return false
-  return bands.some(([lo, hi]) => coins >= lo && coins <= hi)
-}
+export { coinFits }
 
 export function rarityFor(coins: number): ItemUnit['rarity'] {
   if (coins >= 60) return 'legenda'
@@ -398,7 +383,7 @@ export function applyExtract(account: Account, loot: LootRow[], depth: number): 
   const floor = Math.max(1, Math.min(7, Math.floor(depth) || 1))
   let value = 0
   for (const row of loot) {
-    if (!coinFits(row.kind, row.coins)) return { ok: false, reason: 'coins' }
+    if (!coinFits(row.kind, row.coins, floor)) return { ok: false, reason: 'coins' }
     value += row.coins
     if (row.kind === 'tombak') {
       const rarity = rarityFor(row.coins)

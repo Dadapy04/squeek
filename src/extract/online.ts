@@ -1,5 +1,6 @@
 import { apiUrl, onlineEnabled, phoneLayout, walletButtons, walletConnectId } from './online-flag.ts'
 import { freshGate, reduceGate, setRunOpen, type GateState } from './account-gate.ts'
+import { resolveRunToken, tokenOnReload } from './run-token.ts'
 import { nameTagLabel, needsNickname, paintBasePortrait, setNameTag, shortAddress } from './name-tag.ts'
 import type { RunReport } from './run-report.ts'
 import { EXTRACT_SAVE_KEY, loadExtract, setPersistSuspended } from './save.ts'
@@ -23,6 +24,7 @@ interface Hooks {
 let hooks: Hooks | null = null
 let gate: GateState = freshGate()
 let heldProvider: Eip1193 | null = null
+let acceptRunEnd = false
 let deferredWallet: { session: Session; state: unknown } | null = null
 let guestBlob: string | null = null
 let runToken: string | null = null
@@ -181,6 +183,16 @@ function inRun(): boolean {
 
 export function walletSettled(): boolean {
   return gate.settled
+}
+
+export function permitRunEnd(): void {
+  acceptRunEnd = true
+}
+
+export function takeRunEndPermit(): boolean {
+  const allowed = acceptRunEnd
+  acceptRunEnd = false
+  return allowed
 }
 
 export function noteRunBoundary(): void {
@@ -524,24 +536,43 @@ function tellRank(message: string): void {
   showAccountToast(message)
 }
 
+function storedRunToken(): string | null {
+  if (!hooks?.storage) return null
+  try {
+    const token = String((JSON.parse(hooks.storage.getItem(RUN_KEY) ?? '') as { token?: string }).token ?? '')
+    return token || null
+  } catch {
+    return null
+  }
+}
+
+function liveToken(): string | null {
+  const token = resolveRunToken(runToken, storedRunToken(), 'keep')
+  if (token) runToken = token
+  return token
+}
+
 export async function noteExtract(report: RunReport): Promise<RunNotice> {
-  if (!runToken || !hooks || !readSession(hooks.storage)) {
+  const token = liveToken()
+  if (!token || !hooks || !readSession(hooks.storage)) {
     const message = notRanked(t('online.why.token'))
     tellRank(message)
     return { ok: false, ranked: false, message }
   }
-  const token = runToken
   try {
     const response = await api('/v1/runs/extract', { method: 'POST', body: JSON.stringify({ token, ...report }) })
     const body = await response.json().catch(() => ({})) as { reason?: string; error?: string; depth?: number; elapsedMs?: number; ranked?: boolean; state?: unknown }
-    if (body.state) hooks.setSave(saveFromBlob(JSON.stringify(body.state)))
+    if (body.state) {
+      permitRunEnd()
+      hooks.setSave(saveFromBlob(JSON.stringify(body.state)))
+    }
     if (!response.ok) {
       const message = notRanked(rejectText(body))
       tellRank(message)
-      if (body.state) armRun(undefined)
+      if (body.state) armRun(resolveRunToken(token, token, 'close') ?? undefined)
       return { ok: false, ranked: false, message }
     }
-    armRun(undefined)
+    armRun(resolveRunToken(token, token, 'close') ?? undefined)
     if (body.ranked === false) {
       const message = notRanked(t('online.flagged'))
       tellRank(message)
@@ -558,16 +589,19 @@ export async function noteExtract(report: RunReport): Promise<RunNotice> {
 }
 
 export async function noteDeath(depth: number): Promise<RunNotice> {
-  if (!runToken || !hooks || !readSession(hooks.storage)) {
+  const token = liveToken()
+  if (!token || !hooks || !readSession(hooks.storage)) {
     const message = notRanked(t('online.why.token'))
     tellRank(message)
     return { ok: false, ranked: false, message }
   }
-  const token = runToken
   try {
     const response = await api('/v1/runs/die', { method: 'POST', body: JSON.stringify({ token, depth }) })
     const body = await response.json().catch(() => ({})) as { state?: unknown; error?: string }
-    if (body.state) hooks.setSave(saveFromBlob(JSON.stringify(body.state)))
+    if (body.state) {
+      permitRunEnd()
+      hooks.setSave(saveFromBlob(JSON.stringify(body.state)))
+    }
     if (!response.ok) {
       const message = notRanked(t('online.why.net'))
       tellRank(message)
@@ -628,33 +662,22 @@ export function mountOnline(next: Hooks): void {
   const all = document.getElementById('boardAll')
   if (value) value.dataset.on = '1'
   if (all) all.dataset.on = '1'
-  window.addEventListener('pagehide', () => { leaveRun() })
   void recoverStoredRun()
   void settleWallet()
   refreshOnline()
 }
 
-function leaveRun(): void {
-  if (!runToken || !hooks || !onlineEnabled()) return
-  const session = readSession(hooks.storage)
-  if (!session) return
-  void fetch(`${apiUrl()}/v1/runs/die`, {
-    method: 'POST',
-    keepalive: true,
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${session.token}` },
-    body: JSON.stringify({ token: runToken, depth: 1 }),
-  })
-}
-
 async function recoverStoredRun(): Promise<void> {
   if (!hooks?.storage) return
-  const raw = hooks.storage.getItem(RUN_KEY)
-  if (!raw || !readSession(hooks.storage)) return
-  let token = ''
-  try { token = String((JSON.parse(raw) as { token?: string }).token ?? '') } catch { token = '' }
-  if (!token) return
+  const stored = storedRunToken()
+  const action = tokenOnReload(inRun(), stored)
+  if (action === 'restore' && stored) {
+    runToken = stored
+    return
+  }
+  if (action !== 'abandon' || !stored || !readSession(hooks.storage)) return
   try {
-    const response = await api('/v1/runs/die', { method: 'POST', body: JSON.stringify({ token, depth: 1 }) })
+    const response = await api('/v1/runs/die', { method: 'POST', body: JSON.stringify({ token: stored, depth: 1 }) })
     if (response.ok || response.status === 409 || response.status === 401) hooks.storage.removeItem(RUN_KEY)
   } catch { /* the next sign-in closes a delve that is still open */ }
 }

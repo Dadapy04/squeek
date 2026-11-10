@@ -1,4 +1,5 @@
 import { coinsFor, hashText, mintUnit, mixSeed, readUnit, type CoinRarity, type ItemOrigin, type ItemUnit } from './coins.ts'
+import { bossLootRarity } from '../../shared/loot-law.ts'
 import { currentLocale, t, type MsgKey } from './i18n.ts'
 import { BOSS_RAGE_SEC, DEPTH_CAP, DEPTHS, bladeDisplay, bossChip, bossDisplay, bossPattern, bossPhaseOf, depthPlan, foeChip, frontGuarded, GUARD_FACTOR, makeBlade, rageMul, recommendDamage, type Blade, type Breed } from './depths.ts'
 import { bagSlotsOf, blockArc, isRichOre, MERCHANT, nextBagUpgrade, shieldMaxFor, swordBonusPct, swordDamage, upgradeCost, upgradeOre, type MerchantKind } from './economy.ts'
@@ -1796,7 +1797,7 @@ function openContainer(run: Run, crate: Crate): void {
 }
 
 function bossUnit(run: Run, kind: ItemKind, index: number): ItemUnit {
-  const rarity: CoinRarity = (run.depth || 1) >= 4 ? 'legenda' : 'pusaka'
+  const rarity = bossLootRarity(run.depth || 1)
   return { rarity, coins: coinsFor(rarity, mixSeed(run.seed * 19 + index * 7 + kind.length)), origin: 'loot' }
 }
 

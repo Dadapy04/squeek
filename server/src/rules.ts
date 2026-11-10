@@ -48,7 +48,7 @@ export function judgeRun(claim: RunClaim): Verdict {
     if (event.kind === 'loot') {
       const coins = event.coins
       const item = event.item
-      if (typeof coins !== 'number' || typeof item !== 'string' || !coinFits(item, coins)) {
+      if (typeof coins !== 'number' || typeof item !== 'string' || !coinFits(item, coins, depth)) {
         return { ok: false, reason: 'coins' }
       }
       value += coins

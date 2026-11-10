@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { judgeRun } from '../src/rules.ts'
 
 function itemFor(coin: number): string {
-  if (coin >= 60) return 'bilah'
+  if (coin >= 60) return 'tombak'
   if (coin >= 36) return 'relic'
   if (coin >= 18) return 'shard'
   return 'scrap'
@@ -36,6 +36,27 @@ describe('anti-cheat', () => {
     expect(beeline.ok).toBe(true)
     if (beeline.ok) expect(beeline.flagged).toBe(false)
     expect(judgeRun(claim(1, [8], 1_000)).ok).toBe(false)
+    expect(judgeRun({
+      depth: 2,
+      value: 42,
+      elapsedMs: 20_000,
+      events: [
+        { kind: 'depth', depth: 1 },
+        { kind: 'depth', depth: 2 },
+        { kind: 'loot', item: 'scrap', coins: 42 },
+        { kind: 'extract', depth: 2 },
+      ],
+    }).ok).toBe(true)
+    expect(judgeRun({
+      depth: 1,
+      value: 42,
+      elapsedMs: 30_000,
+      events: [
+        { kind: 'depth', depth: 1 },
+        { kind: 'loot', item: 'scrap', coins: 42 },
+        { kind: 'extract', depth: 1 },
+      ],
+    }).ok).toBe(false)
   })
 
   it('flags a haul that is legal but suspiciously rich', () => {
