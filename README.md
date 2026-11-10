@@ -1,4 +1,4 @@
-<!-- squeekchain-project: <project-id> -->
+squeekchain-project: 7fabb35a-0e82-4110-8b29-747e49c16823
 
 # Squeek: Extraction Survival
 
