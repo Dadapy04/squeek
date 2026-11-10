@@ -3,12 +3,11 @@ main = "src/index.ts"
 compatibility_date = "2026-03-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Replace database_id after `wrangler d1 create squeek`.
-# The placeholder lets the file parse. Deploy will fail until it is a real id.
+# Production D1 database `squeek` on the dadapy04 account.
 [[d1_databases]]
 binding = "DB"
 database_name = "squeek"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "21def8b0-69c6-499d-8e04-3ec4c64346ed"
 migrations_dir = "migrations"
 
 [vars]

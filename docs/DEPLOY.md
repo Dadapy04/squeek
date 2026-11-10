@@ -24,25 +24,15 @@ A browser window opens. Approve it. `npx wrangler whoami` should print your emai
 
 ## 3. Create the database
 
-Still inside the `server` folder:
+The production database is already created. `server/wrangler.toml` points at D1 database `squeek` with id `21def8b0-69c6-499d-8e04-3ec4c64346ed`. Do not replace that id.
+
+If you ever have to create it again, from the `server` folder:
 
 ```bash
 npx wrangler d1 create squeek
 ```
 
-The output includes a line like:
-
-```text
-database_id = "a1b2c3d4-...."
-```
-
-Open `server/wrangler.toml`. Replace the placeholder:
-
-```toml
-database_id = "00000000-0000-0000-0000-000000000000"
-```
-
-with the id Cloudflare printed. Leave `database_name = "squeek"` and `binding = "DB"` as they are.
+The output includes a `database_id` line. Put that id in `server/wrangler.toml` and leave `database_name = "squeek"` and `binding = "DB"` as they are.
 
 Create the tables:
 
@@ -82,21 +72,27 @@ If the public site later moves, change those three and deploy again. The signed-
 
 ## 6. Deploy the worker
 
+The production Worker is already deployed:
+
+```text
+https://squeek-api.dadapy04.workers.dev
+```
+
+Health check (open it in a browser):
+
+```text
+https://squeek-api.dadapy04.workers.dev/v1/health
+```
+
+You should see `{"ok":true}`. The API address is that URL with no `/v1/health` on the end.
+
+To publish a later change to the same Worker, from the `server` folder:
+
 ```bash
 npx wrangler deploy
 ```
 
-The last lines print a URL like `https://squeek-api.<your-name>.workers.dev`.
-
-Check it in a browser:
-
-```text
-https://squeek-api.<your-name>.workers.dev/v1/health
-```
-
-You should see `{"ok":true}`. That URL, with no `/v1/health` on the end, is the API address.
-
-This is the only deploy. Do not run it from the game folder. Do not turn on paid Workers features.
+Do not run it from the game folder. Do not turn on paid Workers features. The public game stays guest-only until someone builds Pages with `VITE_API_URL` set.
 
 ## 7. WalletConnect project id (phones)
 
@@ -120,7 +116,7 @@ cp .env.example .env.local
 Edit `.env.local`:
 
 ```bash
-VITE_API_URL=https://squeek-api.<your-name>.workers.dev
+VITE_API_URL=https://squeek-api.dadapy04.workers.dev
 VITE_WALLETCONNECT_PROJECT_ID=
 ```
 
@@ -159,8 +155,8 @@ Until that build is published, the live site keeps working exactly as it does no
 
 | What you see | What to check |
 | --- | --- |
-| `database_id` error on deploy | Step 3. The placeholder id is still in `wrangler.toml`. |
-| Health URL is 404 | The worker name or the account subdomain. `npx wrangler deployments list` shows the URL. |
+| `database_id` error on deploy | Step 3. `wrangler.toml` should still say `21def8b0-69c6-499d-8e04-3ec4c64346ed`. |
+| Health URL is 404 | Production is `https://squeek-api.dadapy04.workers.dev/v1/health`. `npx wrangler deployments list` shows the URL. |
 | Connect wallet does nothing | `.env.local` is in the game folder, the dev server was restarted after editing it, and `VITE_API_URL` has no trailing slash. |
 | Signature rejected | `SIWE_DOMAIN` and `SIWE_URI` match the site in the address bar. Redeploy the worker after changing them. |
 | WalletConnect button complains | Step 7. The id is in `.env.local`, and the Pages origin is allowed in the WalletConnect project. |
