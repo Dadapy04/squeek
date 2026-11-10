@@ -613,7 +613,7 @@ button.danger { background: #6e2420; color: #fff6f2; border-color: #a14a42; }
 #tip[data-at="stick"] { left: 16px; bottom: 108px; }
 #tip[data-at="attack"], #tip[data-at="dodge"], #tip[data-at="block"], #tip[data-at="open"], #tip[data-at="claim"] { right: 16px; bottom: 150px; }
 #tip[data-at="bag"], #tip[data-at="map"] { left: 108px; top: 52px; }
-#tip[data-at="workshop"], #tip[data-at="sell"], #tip[data-at="center"] { left: 50%; top: 72px; transform: translateX(-50%); }
+#tip[data-at="workshop"], #tip[data-at="sell"], #tip[data-at="center"] { left: auto; right: max(12px, var(--safe-r)); top: 112px; bottom: auto; transform: none; max-width: 220px; }
 .tip-hot { outline: 2px solid #f2c04a; outline-offset: 2px; }
 #settings, #overlay { position: absolute; z-index: 6; inset: 0; display: flex; align-items: center; justify-content: center; box-sizing: border-box; padding: 8px; background: rgba(8, 6, 4, 0.55); }
 @media (orientation: landscape) and (max-height: 520px) {

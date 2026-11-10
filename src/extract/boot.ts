@@ -7,7 +7,8 @@ import { AUDIO_KEY, playBoom, playFuseTick, playSoulBurst, playSoulCharge, resum
 import { bedFor, cuesFromDelta, deltaFromSnaps, playBed, playBossFinale, playCue, playRejectClick, playTorchCrackle, readAudioPref as readMix, unlockAudio, writeAudioPref, type Ear } from './game-audio.ts'
 import { blockSecondTap, holdReleased } from './input-lock.ts'
 import { onSwordPress } from './sword-press.ts'
-import { bossTitle, drawChestStrip, drawExtract, drawGallery, drawLootStrip, drawRevealStrip, setEffectBudget } from './view.ts'
+import { bossTitle, drawChestStrip, drawExtract, drawGallery, drawLootStrip, drawRevealStrip, setEffectBudget, setPaintDt } from './view.ts'
+import { SIM_STEP, takeFrames } from './clock.ts'
 import { backingRatio } from './camera.ts'
 import { drawMapSheet } from './map-sprites.ts'
 import { drawBoomStrip, drawFoeRoster } from './view.ts'
@@ -1125,6 +1126,7 @@ function frame(now: number): void {
     return
   }
   if (location.hash === '#galeri') {
+    last = now
     titleOpen = false
     titleEl.hidden = true
     for (const id of ['#bars', '#actions', '#slots', '#shortcuts', '#minimap', '#stickCol', '#moveZone', '#banner', '#bossBar', '#note', '#channel']) {
@@ -1143,6 +1145,7 @@ function frame(now: number): void {
     return
   }
   if (titleOpen) {
+    last = now
     const fine = titleUsesDesktopPrompt({
       fine: window.matchMedia('(pointer: fine)').matches,
       coarse: window.matchMedia('(pointer: coarse)').matches,
@@ -1161,54 +1164,61 @@ function frame(now: number): void {
     const workStart = performance.now()
     const raw = (now - last) / 1000
     last = now
-    const frameDt = Number.isFinite(raw) && raw > 0 ? Math.min(raw, 0.05) : 1 / 60
-    simBank = Math.min(0.05, simBank + frameDt)
-    const dt = simBank >= 1 / 60 ? 1 / 60 : 0
-    if (dt > 0) simBank -= dt
+    const clock = takeFrames(simBank, raw)
+    simBank = clock.bank
+    setPaintDt(clock.frameDt)
     if (save.run && !outcome && hudOpen && fieldVisible()) {
       paint()
     } else if (save.run && !outcome && fieldVisible()) {
-      const input = readInput()
-      if (input.interact && save.run) {
-        const purse = save.coins
-        const note = fieldBuy(save, 'bandage')
-        if (note) save.run.floats.push({ text: note, life: 1.6 })
-        else if (save.coins < purse) playCue('world.buy', mixPref())
-      }
-      const next = dt > 0 ? step(save.run, input, dt) : 'play'
-      const ping = save.run?.boomPing ?? 0
-      if (ping !== boomHeard) {
-        boomHeard = ping
-        playBoom(audioPref())
-      }
-      const ticks = save.run?.fuseTick ?? 0
-      if (ticks !== fuseHeard) {
-        fuseHeard = ticks
-        playFuseTick(audioPref())
-      }
-      if (soulNear(save.run) && (tap.claim || tap.interact)) claimSoul(save.run)
-      else if (tap.claim && !bagFull(save.run)) {
-        const target = claimTarget(save.run)
-        if (target) claimLoot(save.run, target.id, 'local')
-        rememberTip('take')
-      }
-      notePlay(save.run, input)
-      hear(save.run)
-      if (dt > 0) {
+      let ended: 'extracted' | 'dead' | null = null
+      if (clock.steps > 0) {
+        const input = readInput()
+        if (input.interact && save.run) {
+          const purse = save.coins
+          const note = fieldBuy(save, 'bandage')
+          if (note) save.run.floats.push({ text: note, life: 1.6 })
+          else if (save.coins < purse) playCue('world.buy', mixPref())
+        }
+        if (soulNear(save.run) && (tap.claim || tap.interact)) claimSoul(save.run)
+        else if (tap.claim && !bagFull(save.run)) {
+          const target = claimTarget(save.run)
+          if (target) claimLoot(save.run, target.id, 'local')
+          rememberTip('take')
+        }
+        const held = { ...input, attack: false, dodge: false, interact: false, use: null, soul: false }
+        for (let i = 0; i < clock.steps; i += 1) {
+          const next = step(save.run, i === 0 ? input : held, SIM_STEP)
+          const ping = save.run?.boomPing ?? 0
+          if (ping !== boomHeard) {
+            boomHeard = ping
+            playBoom(audioPref())
+          }
+          const ticks = save.run?.fuseTick ?? 0
+          if (ticks !== fuseHeard) {
+            fuseHeard = ticks
+            playFuseTick(audioPref())
+          }
+          if (next === 'extracted' || next === 'dead') {
+            ended = next
+            break
+          }
+        }
         tap.attack = false
         tap.dodge = false
         tap.interact = false
         tap.claim = false
         tap.soul = false
         tap.use = null
-      }
-      if (next === 'extracted' || next === 'dead') finish(next)
-      else {
-        sinceSave += dt
+        sinceSave += clock.steps * SIM_STEP
         if (sinceSave > 0.4) {
           writeExtract(storage, save)
           sinceSave = 0
         }
+      }
+      if (ended) finish(ended)
+      else {
+        notePlay(save.run, readInput())
+        hear(save.run)
         paint()
       }
     }

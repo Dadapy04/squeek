@@ -91,6 +91,25 @@ export function dashBack(x: number, y: number, facing: number, distance = 14): {
 }
 
 
+let paintDt = 0
+
+/** Wall-clock slice for this paint. Particles and the boss death use it, not the refresh rate. */
+export function setPaintDt(seconds: number): void {
+  paintDt = Number.isFinite(seconds) && seconds > 0 ? Math.min(0.05, seconds) : 0
+}
+
+/** How much a 60fps per-frame decrement should move for this slice of wall time. */
+export function frameDecay(perFrame: number, seconds = paintDt): number {
+  if (!Number.isFinite(seconds) || seconds <= 0 || !Number.isFinite(perFrame)) return 0
+  return perFrame * Math.min(0.05, seconds) * 60
+}
+
+function consumeFrames(): number {
+  const frames = frameDecay(1)
+  paintDt = 0
+  return frames
+}
+
 function motionReduced(): boolean {
   const now = typeof performance === 'undefined' ? 0 : performance.now()
   if (now - reducedAt > 1000) {
@@ -511,13 +530,14 @@ function tickEffects(run: Run): void {
       puffs.push(puff)
     }
   }
+  const frames = consumeFrames()
   for (const puff of puffs) {
-    puff.life -= reduced ? 0.04 : 0.016
-    puff.x += puff.vx * 0.04
-    puff.y += puff.vy * 0.04
-    puff.vx *= 0.94
-    puff.vy *= 0.94
-    if (!reduced) puff.girth = Math.min(10, puff.girth + 0.025)
+    puff.life -= (reduced ? 0.04 : 0.016) * frames
+    puff.x += puff.vx * 0.04 * frames
+    puff.y += puff.vy * 0.04 * frames
+    puff.vx *= Math.pow(0.94, frames)
+    puff.vy *= Math.pow(0.94, frames)
+    if (!reduced) puff.girth = Math.min(10, puff.girth + 0.025 * frames)
   }
   for (let i = puffs.length - 1; i >= 0; i -= 1) {
     if (puffs[i]!.life > 0) continue
@@ -526,7 +546,7 @@ function tickEffects(run: Run): void {
     if (i < puffs.length) puffs[i] = last
     freePuffs.push(dead)
   }
-  watchBoss(run)
+  watchBoss(run, frames)
   if (run.swing > 0 && effectBudget === 'full') {
     const aim = swordAim(run.facing, run.swing)
     const crumb = takeCrumb()
@@ -535,7 +555,7 @@ function tickEffects(run: Run): void {
     crumb.life = 0.16
     crumbs.push(crumb)
   }
-  for (const crumb of crumbs) crumb.life -= 0.025
+  for (const crumb of crumbs) crumb.life -= 0.025 * frames
   while (crumbs.length > 8) {
     const old = crumbs.shift()
     if (old) freeCrumbs.push(old)
@@ -1789,7 +1809,7 @@ function drawSmoke(
   ctx.restore()
 }
 
-function watchBoss(run: Run): void {
+function watchBoss(run: Run, frames: number): void {
   for (const foe of run.foes) {
     if (foe.kind !== 'boss') continue
     const alive = foe.hp > 0 && !run.slain.includes(foe.id)
@@ -1814,7 +1834,7 @@ function watchBoss(run: Run): void {
       links: kelabang ? syncCentipede(foe).map((link) => ({ ...link })) : [{ x: foe.x, y: foe.y }],
     })
   }
-  for (const death of deaths) death.life -= 0.016
+  for (const death of deaths) death.life -= 0.016 * frames
   for (let i = deaths.length - 1; i >= 0; i -= 1) if (deaths[i]!.life <= 0) deaths.splice(i, 1)
 }
 
