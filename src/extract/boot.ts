@@ -636,7 +636,7 @@ function paintBag(): void {
   panel.append(invHead(t('bag.value', { n: coins }), `${carried}/${bagLimit(run)}`))
   const gear = document.createElement('div')
   gear.className = 'inv-gear'
-  const weapon = gearSlot(run.spear ? 'tombak' : 'sword', run.spear ? t('spear.named', { rarity: RARITY_NAME[run.spear.rarity] }) : run.sword ? t('hud.sword') : t('stash.empty'), run.spear?.rarity, run.spear?.coins ?? 0, true)
+  const weapon = gearSlot(run.spear ? 'tombak' : 'sword', run.spear ? t('spear.named', { rarity: RARITY_NAME[run.spear.rarity] }) : run.blade ? bladeDisplay(run.blade.id, run.blade.name) : run.sword ? t('hud.sword') : t('stash.empty'), run.spear?.rarity ?? run.blade?.rarity, run.spear?.coins ?? run.blade?.coins ?? 0, true)
   weapon.disabled = run.spear == null
   if (run.spear) {
     const wornSpear = run.spear
@@ -1392,6 +1392,7 @@ function rowName(row: ResultRow): string {
 function carriedRows(run: NonNullable<ExtractSave['run']>): ResultRow[] {
   const rows: ResultRow[] = []
   if (run.spear) rows.push({ kind: 'tombak', name: '', spear: run.spear, n: 1, value: 0, rarity: run.spear.rarity, brought: true })
+  else if (run.blade) rows.push({ kind: 'sword', name: bladeDisplay(run.blade.id, run.blade.name), n: 1, value: run.blade.coins, rarity: run.blade.rarity, brought: true })
   else if (run.sword) rows.push({ kind: 'sword', name: '', live: 'sword', n: 1, value: 0, brought: true })
   for (const spear of run.found ?? []) rows.push({ kind: 'tombak', name: '', spear, n: 1, value: spear.coins ?? 0, rarity: spear.rarity, brought: false })
   if (run.shield != null && run.shield > 0) rows.push({ kind: 'shield', name: '', n: run.shield, value: 0, brought: true })
@@ -1723,8 +1724,8 @@ function paint(): void {
   watchSoul(run)
   const attackBtn = document.querySelector<HTMLButtonElement>('#attack')
   if (attackBtn) {
-    attackBtn.disabled = !run.sword && run.spear == null
-    attackBtn.textContent = run.spear ? t('hud.spear') : t('hud.sword')
+    attackBtn.disabled = !run.sword && run.spear == null && run.blade == null
+    attackBtn.textContent = run.spear ? t('hud.spear') : run.blade ? bladeDisplay(run.blade.id, run.blade.name) : t('hud.sword')
     attackBtn.dataset.kind = run.spear ? 'tombak' : 'sword'
   }
   if (blockBtn) {
@@ -1746,11 +1747,12 @@ function paint(): void {
   support.disabled = save.support < 24
   support.textContent = t('hud.hold', { n: save.support })
   const swordSlot = document.querySelector<HTMLButtonElement>('#slotSword')!
-  swordSlot.textContent = run.spear ? t('hud.spear') : t('hud.sword')
+  swordSlot.textContent = run.spear ? t('hud.spear') : run.blade ? bladeDisplay(run.blade.id, run.blade.name) : t('hud.sword')
   swordSlot.dataset.kind = run.spear ? 'tombak' : 'sword'
   if (run.spear) swordSlot.dataset.rarity = run.spear.rarity
+  else if (run.blade) swordSlot.dataset.rarity = run.blade.rarity
   else delete swordSlot.dataset.rarity
-  swordSlot.classList.toggle('on', run.sword || run.spear != null)
+  swordSlot.classList.toggle('on', run.sword || run.spear != null || run.blade != null)
   document.querySelector<HTMLButtonElement>('#slotShield')!.dataset.kind = 'shield'
   const soon = document.querySelector<HTMLButtonElement>('#slotSoon')!
   soon.disabled = true

@@ -130,10 +130,10 @@ export const DEPTHS: DepthPlan[] = [
       patterns: [slam(82), burrow(64), charge(96)],
     },
     foes: [
-      { id: 'web-a', kind: 'web', breed: 'web', name: 'Perajut Jaring', zone: 'reruntuhan', x: -36, y: -20, hp: 140, damage: 28 },
-      { id: 'web-b', kind: 'web', breed: 'web', name: 'Perajut Jaring', zone: 'tambang', x: 18, y: 44, hp: 140, damage: 28 },
-      { id: 'ember-a', kind: 'ember', breed: 'ember', name: 'Tikus Bara', zone: 'tambang', x: -58, y: -30, hp: 160, damage: 32 },
-      { id: 'ember-b', kind: 'ember', breed: 'ember', name: 'Tikus Bara', zone: 'reruntuhan', x: 52, y: 28, hp: 160, damage: 32 },
+      { id: 'web-a', kind: 'web', breed: 'web', name: 'Perajut Jaring', zone: 'reruntuhan', x: -36, y: -20, hp: 240, damage: 36 },
+      { id: 'web-b', kind: 'web', breed: 'web', name: 'Perajut Jaring', zone: 'tambang', x: 18, y: 44, hp: 240, damage: 36 },
+      { id: 'ember-a', kind: 'ember', breed: 'ember', name: 'Tikus Bara', zone: 'tambang', x: -58, y: -30, hp: 260, damage: 40 },
+      { id: 'ember-b', kind: 'ember', breed: 'ember', name: 'Tikus Bara', zone: 'reruntuhan', x: 52, y: 28, hp: 260, damage: 40 },
     ],
   },
   {
@@ -141,14 +141,14 @@ export const DEPTHS: DepthPlan[] = [
     recommend: 130,
     sword: { id: 'taring-jaring', name: 'Taring Jaring', damage: 170, rarity: 'legenda', coins: 84 },
     boss: {
-      id: 'boss-laba', breed: 'laba', name: 'Laba Ratu', hp: 1560, damage: 78,
-      patterns: [snare(52), bolt(70), ring(96)],
+      id: 'boss-laba', breed: 'laba', name: 'Laba Ratu', hp: 1560, damage: 88,
+      patterns: [snare(58), bolt(76), ring(108)],
     },
     foes: [
-      { id: 'leech-a', kind: 'leech', breed: 'leech', name: 'Pacet Gua', zone: 'tambang', x: -16, y: -40, hp: 200, damage: 40 },
-      { id: 'leech-b', kind: 'leech', breed: 'leech', name: 'Pacet Gua', zone: 'reruntuhan', x: 28, y: 36, hp: 200, damage: 40 },
-      { id: 'bomber-a', kind: 'bomber', breed: 'bomber', name: 'Penabur Ranjau', zone: 'tambang', x: 48, y: -12, hp: 180, damage: 48 },
-      { id: 'bomber-b', kind: 'bomber', breed: 'bomber', name: 'Penabur Ranjau', zone: 'reruntuhan', x: -44, y: 16, hp: 180, damage: 48 },
+      { id: 'leech-a', kind: 'leech', breed: 'leech', name: 'Pacet Gua', zone: 'tambang', x: -16, y: -40, hp: 300, damage: 48 },
+      { id: 'leech-b', kind: 'leech', breed: 'leech', name: 'Pacet Gua', zone: 'reruntuhan', x: 28, y: 36, hp: 300, damage: 48 },
+      { id: 'bomber-a', kind: 'bomber', breed: 'bomber', name: 'Penabur Ranjau', zone: 'tambang', x: 48, y: -12, hp: 280, damage: 56 },
+      { id: 'bomber-b', kind: 'bomber', breed: 'bomber', name: 'Penabur Ranjau', zone: 'reruntuhan', x: -44, y: 16, hp: 280, damage: 56 },
     ],
   },
   {
@@ -157,13 +157,13 @@ export const DEPTHS: DepthPlan[] = [
     sword: { id: 'jantung-bara', name: 'Jantung Bara', damage: 210, rarity: 'legenda', coins: 88 },
     boss: {
       id: 'boss-mulut', breed: 'mulut', name: 'Mulut Tambang', hp: 2040, damage: 92,
-      patterns: [slam(92), bolt(70), charge(118)],
+      patterns: [slam(92), bolt(84), charge(118)],
     },
     foes: [
-      { id: 'wisp-a', kind: 'wisp', breed: 'wisp', name: 'Nyala Gentayangan', zone: 'reruntuhan', x: -22, y: -36, hp: 220, damage: 44 },
-      { id: 'wisp-b', kind: 'wisp', breed: 'wisp', name: 'Nyala Gentayangan', zone: 'tambang', x: 36, y: 22, hp: 220, damage: 44 },
-      { id: 'crusher-a', kind: 'crusher', breed: 'crusher', name: 'Penghancur Batu', zone: 'tambang', x: -40, y: 50, hp: 340, damage: 64 },
-      { id: 'crusher-b', kind: 'crusher', breed: 'crusher', name: 'Penghancur Batu', zone: 'reruntuhan', x: 58, y: -24, hp: 340, damage: 64 },
+      { id: 'wisp-a', kind: 'wisp', breed: 'wisp', name: 'Nyala Gentayangan', zone: 'reruntuhan', x: -22, y: -36, hp: 340, damage: 52 },
+      { id: 'wisp-b', kind: 'wisp', breed: 'wisp', name: 'Nyala Gentayangan', zone: 'tambang', x: 36, y: 22, hp: 340, damage: 52 },
+      { id: 'crusher-a', kind: 'crusher', breed: 'crusher', name: 'Penghancur Batu', zone: 'tambang', x: -40, y: 50, hp: 420, damage: 76 },
+      { id: 'crusher-b', kind: 'crusher', breed: 'crusher', name: 'Penghancur Batu', zone: 'reruntuhan', x: 58, y: -24, hp: 420, damage: 76 },
     ],
   },
 ]

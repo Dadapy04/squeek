@@ -51,7 +51,7 @@ export interface PropNode {
   id: string
   room: string
   zone: ZoneName
-  kind: 'chest' | 'lever' | 'barrel' | 'crate' | 'crack' | 'shrine' | 'vendor' | 'puddle' | 'web' | 'lava' | 'debris' | 'thorn'
+  kind: 'chest' | 'lever' | 'barrel' | 'crate' | 'crack' | 'shrine' | 'vendor' | 'puddle' | 'web' | 'lava' | 'debris' | 'thorn' | 'root' | 'cloud' | 'pod' | 'cart' | 'cocoon' | 'vent'
   x: number
   y: number
   state: 'live' | 'spent' | 'open'
@@ -65,6 +65,8 @@ export interface PropNode {
   fuseMax?: number
   /** Seconds until the next fuse tick. Not required on old saves. */
   tickAt?: number
+  /** Cart direction, or the home x of a drifting cloud. Missing on older props. */
+  lane?: number
 }
 
 export interface SpawnNode {
@@ -136,16 +138,23 @@ export function themeFor(depth: number): ThemePaint {
   return THEME_PAINT[level - 1]!
 }
 
-/** Rarity bands match COIN_BAND. Deep floors are the only place valuable ore appears. */
+/** Rarity bands match COIN_BAND. Each depth pays more than the one above it. Depth 1 stays copper and silver. */
 export function oreRoll(depth: number, salt: number, big: boolean): { ore: OreKind; rarity: CoinRarity } {
   const level = Math.max(1, Math.min(7, Math.floor(depth) || 1))
   const roll = Math.abs(Math.floor(salt)) % 5
-  if (level <= 2) {
+  if (level <= 1) {
     if (roll === 0) return { ore: 'silver', rarity: 'langka' }
     return { ore: 'copper', rarity: 'biasa' }
   }
-  if (level <= 4) return { ore: 'gold', rarity: big ? 'pusaka' : 'langka' }
-  if (level <= 6) return { ore: roll % 2 === 0 ? 'spore' : 'gem', rarity: 'pusaka' }
+  if (level === 2) {
+    if (roll === 0) return { ore: 'gold', rarity: 'langka' }
+    return { ore: 'silver', rarity: 'langka' }
+  }
+  if (level === 3) return { ore: 'gold', rarity: big ? 'pusaka' : 'langka' }
+  if (level === 4) return { ore: 'gold', rarity: 'pusaka' }
+  const deep = roll % 2 === 0 ? 'spore' : 'gem'
+  if (level === 5) return { ore: deep, rarity: 'pusaka' }
+  if (level === 6) return { ore: deep, rarity: big ? 'legenda' : 'pusaka' }
   return { ore: 'abyss', rarity: 'legenda' }
 }
 
@@ -393,6 +402,33 @@ function placeVeins(rooms: RoomNode[], depth: number, salt: number, rand: () => 
   return veins
 }
 
+const SIGNATURE = ['root', 'cloud', 'pod', 'cart', 'cocoon', 'vent'] as const
+
+/** One themed hazard on the mine and the ruins. Depth 7 also vents the boss room. */
+function placeSignature(props: PropNode[], rooms: RoomNode[], depth: number): void {
+  if (depth < 2) return
+  const kind = SIGNATURE[depth - 2]!
+  const hosts = rooms.filter((room) => room.zone === 'tambang' || room.zone === 'reruntuhan' || (depth === 7 && room.zone === 'sarang'))
+  for (const room of hosts) {
+    const y = room.zone === 'tambang' ? 28 : room.zone === 'sarang' ? 72 : -16
+    const x = kind === 'cart' ? -72 : 8
+    const spot = shiftOffDoor(room, x, y)
+    props.push({
+      id: `haz-${kind}-${room.id}`,
+      room: room.id,
+      zone: room.zone,
+      kind,
+      x: spot.x,
+      y: kind === 'cart' ? y : spot.y,
+      state: 'live',
+      loot: [],
+      lock: 'none',
+      lane: kind === 'cart' ? 1 : kind === 'cloud' ? spot.x : undefined,
+      fuse: kind === 'pod' ? 0.9 : undefined,
+    })
+  }
+}
+
 function placeProps(rooms: RoomNode[], depth: number, rand: () => number): PropNode[] {
   const props: PropNode[] = []
   for (const room of rooms) {
@@ -437,8 +473,9 @@ function placeProps(rooms: RoomNode[], depth: number, rand: () => number): PropN
       })
     }
   }
+  placeSignature(props, rooms, depth)
   for (const item of props) {
-    if (item.kind === 'crack') continue
+    if (item.kind === 'crack' || item.kind === 'cart') continue
     const room = rooms.find((entry) => entry.id === item.room)
     if (!room) continue
     const spot = shiftOffDoor(room, item.x, item.y)

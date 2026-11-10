@@ -260,6 +260,7 @@ export function drawExtract(
       else drawCentipede(ctx, death.links.map((link) => at(link.x, link.y)), scale, 0, gone < 0.22 ? 0.35 : 0, run.age, death.aim, 0, death.depth, 0)
       ctx.restore()
     }
+    if (death.breed && gone < 0.42) drawBossSting(ctx, p.x, p.y, scale, death.breed, gone)
     if (fade > 0.2) drawDissolve(ctx, p.x, p.y, scale, fade, run.age)
   }
   drawSoulWorld(ctx, run, at, scale, elapsed)
@@ -271,7 +272,7 @@ export function drawExtract(
     gait: run.gait,
     stepping: run.stepping,
     swing: run.swing,
-    sword: run.sword || run.spear != null,
+    sword: run.sword || run.spear != null || run.blade != null,
     weapon: run.spear ? 'spear' : 'sword',
     spearRarity: run.spear?.rarity,
     spearReach: run.spear ? spearReach(run.spear) : undefined,
@@ -1293,6 +1294,10 @@ function drawDungeonDress(
       continue
     }
     if (prop.state === 'spent') continue
+    if (prop.kind === 'root' || prop.kind === 'cloud' || prop.kind === 'pod' || prop.kind === 'cart' || prop.kind === 'cocoon' || prop.kind === 'vent') {
+      drawHazard(ctx, at(prop.x, prop.y), scale, prop.kind, prop.fuse ?? 0, run.age, prop.lane ?? 1)
+      continue
+    }
     if (prop.kind === 'crack' && prop.state === 'open') {
       const room = run.chart ? roomAt(run.chart, prop.room) : null
       const door = room?.doors.find((item) => item.lock === 'secret' && run.flags?.includes(`secret:${item.to}`))
@@ -2052,6 +2057,78 @@ function blot(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h:
   ctx.fillRect(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)))
 }
 
+function drawHazard(
+  ctx: CanvasRenderingContext2D,
+  p: { x: number; y: number },
+  scale: number,
+  kind: string,
+  fuse: number,
+  age: number,
+  lane: number,
+): void {
+  const s = Math.max(1, scale)
+  if (kind === 'root') {
+    blot(ctx, p.x - 10 * s, p.y - 4 * s, 20 * s, 8 * s, '#3d5a32')
+    blot(ctx, p.x - 14 * s, p.y - 2 * s, 6 * s, 3 * s, '#6a4a28')
+    blot(ctx, p.x + 8 * s, p.y - 1 * s, 7 * s, 3 * s, '#6a4a28')
+    blot(ctx, p.x - 3 * s, p.y - 6 * s, 5 * s, 3 * s, '#8fbf6a')
+    return
+  }
+  if (kind === 'cloud') {
+    const drift = Math.sin(age * 3) * 2 * s
+    blot(ctx, p.x - 8 * s + drift, p.y - 6 * s, 7 * s, 7 * s, '#c4f27a')
+    blot(ctx, p.x + 2 * s, p.y - 3 * s, 6 * s, 6 * s, '#7dcec4')
+    blot(ctx, p.x - 2 * s, p.y + 1 * s, 5 * s, 5 * s, '#e7c27a')
+    return
+  }
+  if (kind === 'pod') {
+    const hot = fuse < 0.45
+    blot(ctx, p.x - 8 * s, p.y - 6 * s, 16 * s, 12 * s, '#8a6a32')
+    blot(ctx, p.x - 4 * s, p.y - 3 * s, 8 * s, 6 * s, hot ? '#e10600' : '#e7c27a')
+    if (hot) blot(ctx, p.x - 12 * s, p.y - 10 * s, 24 * s, 2 * s, '#f2c04a')
+    return
+  }
+  if (kind === 'cart') {
+    blot(ctx, p.x - 16 * s, p.y + 4 * s, 32 * s, 2 * s, '#9aa0a8')
+    blot(ctx, p.x - 8 * s, p.y - 6 * s, 16 * s, 10 * s, '#6b4424')
+    blot(ctx, p.x + (lane < 0 ? -10 : 6) * s, p.y - 4 * s, 4 * s, 4 * s, '#e25a2a')
+    blot(ctx, p.x - 6 * s, p.y + 4 * s, 4 * s, 4 * s, '#2a241c')
+    blot(ctx, p.x + 3 * s, p.y + 4 * s, 4 * s, 4 * s, '#2a241c')
+    return
+  }
+  if (kind === 'cocoon') {
+    blot(ctx, p.x - 7 * s, p.y - 10 * s, 14 * s, 18 * s, '#d5dee6')
+    blot(ctx, p.x - 2 * s, p.y - 6 * s, 4 * s, 10 * s, '#4a3a58')
+    blot(ctx, p.x - 10 * s, p.y - 2 * s, 4 * s, 2 * s, '#b7a8c8')
+    blot(ctx, p.x + 6 * s, p.y + 2 * s, 4 * s, 2 * s, '#b7a8c8')
+    return
+  }
+  const live = fuse > 0 && fuse < 0.5
+  blot(ctx, p.x - 8 * s, p.y - 3 * s, 16 * s, 6 * s, '#1a080c')
+  blot(ctx, p.x - 5 * s, p.y - (live ? 8 : 4) * s, 4 * s, live ? 8 * s : 4 * s, live ? '#ffb020' : '#6e2420')
+  blot(ctx, p.x + 2 * s, p.y - (live ? 10 : 3) * s, 3 * s, live ? 10 * s : 3 * s, live ? '#e10600' : '#6e2420')
+}
+
+const STING_COLOR: Record<string, string> = {
+  liang: '#8fbf6a',
+  spora: '#c4f27a',
+  kumbang: '#e7c27a',
+  mondok: '#f2c04a',
+  laba: '#d5dee6',
+  mulut: '#ff4d4d',
+}
+
+function drawBossSting(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number, breed: string, gone: number): void {
+  const color = STING_COLOR[breed] ?? '#f2c04a'
+  const s = Math.max(1, scale)
+  const reach = (8 + gone * 46) * s
+  for (let i = 0; i < 8; i += 1) {
+    const ang = (i / 8) * Math.PI * 2
+    blot(ctx, x + Math.cos(ang) * reach, y + Math.sin(ang) * reach, 3 * s, 3 * s, color)
+  }
+  blot(ctx, x - 2 * s, y - 2 * s, 4 * s, 4 * s, '#f7fbff')
+}
+
 function drawMound(ctx: CanvasRenderingContext2D, p: { x: number; y: number }, scale: number, wind: number): void {
   blot(ctx, p.x - 8 * scale, p.y - 3 * scale, 16 * scale, 6 * scale, '#3a2c20')
   blot(ctx, p.x - 4 * scale, p.y - 6 * scale, 8 * scale, 4 * scale, wind > 0 ? '#f2c04a' : '#6a442c')
@@ -2064,13 +2141,14 @@ function drawSpecialTelegraph(ctx: CanvasRenderingContext2D, foe: Foe, x: number
     ctx.strokeRect(Math.round(x + (mark.x - foe.x) * scale - 4 * scale), Math.round(y + (mark.y - foe.y) * scale - 4 * scale), Math.round(8 * scale), Math.round(8 * scale))
   }
   if (foe.wind <= 0 && !(foe.lurk && foe.hidden)) return
-  const pattern: AttackKind = foe.kind === 'boss' ? bossPattern(String(foe.breed), foe.pattern ?? 0, foe.phase ?? 0).kind : foe.kind === 'spore' || foe.kind === 'web' ? 'bolt' : foe.kind === 'beetle' ? 'charge' : foe.kind === 'burrow' || foe.kind === 'wisp' ? 'burrow' : 'slam'
+  const pattern: AttackKind = foe.kind === 'boss' ? bossPattern(String(foe.breed), foe.pattern ?? 0, foe.phase ?? 0).kind : foe.kind === 'spore' || foe.kind === 'web' ? 'bolt' : foe.kind === 'beetle' || foe.kind === 'ember' || foe.kind === 'mole' ? 'charge' : foe.kind === 'burrow' || foe.kind === 'wisp' ? 'burrow' : 'slam'
   const at = foe.lurk && (pattern === 'burrow') ? { x: x + (foe.lurk.x - foe.x) * scale, y: y + (foe.lurk.y - foe.y) * scale } : { x, y }
   ctx.save()
   ctx.translate(at.x, at.y)
   ctx.rotate(foe.aim)
   const grow = 1 - Math.min(1, foe.wind / 0.9)
   if (pattern === 'bolt' || pattern === 'snare') {
+    ctx.lineWidth = Math.max(2, 3 * scale)
     ctx.strokeStyle = pattern === 'snare' ? 'rgba(179, 136, 255, 0.9)' : 'rgba(255, 236, 170, 0.9)'
     ctx.beginPath()
     ctx.moveTo(0, 0)

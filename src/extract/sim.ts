@@ -1436,7 +1436,7 @@ function hurtPlayer(run: Run, amount: number, fromX: number, fromY: number): voi
 /** Start a swing on this call. Same cooldown and stamina as before. */
 export function trySwing(run: Run): boolean {
   const casting = (run.soul?.cast ?? 0) > 0
-  const armed = run.sword || run.spear != null
+  const armed = run.sword || run.spear != null || run.blade != null
   if (!(run.attackCd <= 0 && armed && run.stam >= 10 && run.swing <= 0 && !casting)) return false
   run.stam -= run.spear ? 8 : 10
   run.attackCd = run.spear ? 0.4 : 0.5
@@ -1883,7 +1883,9 @@ function tickMarks(run: Run, foe: Foe, h: number): void {
       continue
     }
     if (!explode && mark.life > 0 && Math.hypot(mark.x - run.x, mark.y - run.y) < 16) {
-      hurtRaw(run, Math.max(6, Math.round((foe.damage ?? 12) * 0.3)), mark.x, mark.y)
+      hurtRaw(run, Math.max(6, Math.round((foe.damage ?? 12) * (foe.kind === 'wisp' ? 0.55 : 0.3))), mark.x, mark.y)
+      if (foe.kind === 'burrow') run.snare = Math.max(run.snare ?? 0, 0.75)
+      if (foe.kind === 'swarm' || foe.kind === 'jelly') run.snare = Math.max(run.snare ?? 0, 0.45)
       mark.life = 0
     }
     if (mark.life > 0) next.push(mark)
@@ -1909,6 +1911,7 @@ function tickSpecial(run: Run, foe: Foe, h: number): void {
       const pattern = foe.kind === 'boss' ? bossPattern(String(foe.breed), foe.pattern ?? 0, foe.phase ?? 0) : null
       hurtRaw(run, (pattern?.damage ?? foe.damage ?? 14) * rageMul(foe.fought ?? 0), foe.bolt.x, foe.bolt.y)
       if (foe.kind === 'web' || pattern?.kind === 'snare') run.snare = Math.max(run.snare ?? 0, 1.6)
+      else if (foe.kind === 'spore') run.snare = Math.max(run.snare ?? 0, 0.65)
       foe.bolt = null
     } else if (Math.hypot(foe.bolt.x - foe.x, foe.bolt.y - foe.y) > 180) foe.bolt = null
   }
@@ -1967,10 +1970,11 @@ function beginSpecial(run: Run, foe: Foe, boss: boolean): void {
       foe.lurk = { x: run.x, y: run.y }
       foe.hidden = true
     }
-    foe.wind = (foe.phase === 1 ? 0.62 : 0.9) * ((foe.fought ?? 0) >= BOSS_RAGE_SEC ? 0.6 : 1)
+    const rush = (foe.fought ?? 0) >= BOSS_RAGE_SEC ? 0.72 : 1
+    foe.wind = Math.max(0.78, (foe.phase === 1 ? 0.82 : 0.95) * rush)
     return
   }
-  foe.wind = foe.kind === 'crusher' ? 1.05 : foe.kind === 'burrow' || foe.kind === 'wisp' ? 0.75 : foe.kind === 'beetle' ? 0.68 : 0.55
+  foe.wind = foe.kind === 'crusher' ? 1.15 : foe.kind === 'mole' ? 0.95 : foe.kind === 'ember' ? 0.74 : foe.kind === 'burrow' || foe.kind === 'wisp' ? 0.8 : foe.kind === 'beetle' ? 0.7 : 0.55
   if (foe.kind === 'burrow') {
     foe.lurk = { x: run.x, y: run.y }
     foe.hidden = true
@@ -2066,25 +2070,37 @@ function resolveSpecial(run: Run, foe: Foe): void {
     foe.x = foe.lurk.x
     foe.y = foe.lurk.y
     if (Math.hypot(run.x - foe.x, run.y - foe.y) < 24) hurtRaw(run, damage, foe.x, foe.y)
+    foe.marks = [...(foe.marks ?? []), { x: foe.x, y: foe.y, life: 2.1 }].slice(-3)
     foe.hidden = true
     foe.cd = 1.35
     return
   }
   if (foe.kind === 'wisp') {
+    foe.marks = [...(foe.marks ?? []), { x: foe.x, y: foe.y, life: 1.5 }].slice(-3)
     foe.x = run.x - Math.cos(foe.aim) * 18
     foe.y = run.y - Math.sin(foe.aim) * 18
     if (Math.hypot(run.x - foe.x, run.y - foe.y) < 28) hurtRaw(run, damage, foe.x, foe.y)
     foe.cd = 1.25
     return
   }
+  if (foe.kind === 'mole' || foe.kind === 'ember') {
+    foe.dash = foe.kind === 'mole' ? 0.32 : 0.24
+    return
+  }
   if (foe.kind === 'bomber') {
-    foe.marks = [...(foe.marks ?? []), { x: foe.x, y: foe.y, life: 0.85 }].slice(-3)
+    foe.marks = [...(foe.marks ?? []), { x: foe.x, y: foe.y, life: 1.05 }].slice(-3)
     foe.cd = 1.6
     return
   }
   if (dist < (foe.kind === 'crusher' ? 48 : foe.kind === 'moth' || foe.kind === 'swarm' ? 30 : 36)) {
     hurtRaw(run, damage, foe.x, foe.y)
-    if (foe.kind === 'leech') foe.hp = Math.min(foe.maxHp ?? foe.hp, foe.hp + Math.round(damage * 0.4))
+    if (foe.kind === 'leech') {
+      foe.hp = Math.min(foe.maxHp ?? foe.hp, foe.hp + Math.round(damage * 0.4))
+      run.snare = Math.max(run.snare ?? 0, 0.9)
+    }
+    if (foe.kind === 'jelly' || foe.kind === 'swarm') {
+      foe.marks = [...(foe.marks ?? []), { x: foe.x, y: foe.y, life: foe.kind === 'jelly' ? 1.3 : 0.8 }].slice(-3)
+    }
   }
   foe.cd = foe.kind === 'swarm' ? 0.7 : foe.kind === 'crusher' ? 1.6 : 1.15
 }
@@ -2338,7 +2354,7 @@ function tickDungeon(run: Run, dt: number): void {
   if (!run.seenRooms.includes(room.id)) run.seenRooms.push(room.id)
   run.gloom = room.event === 'dark' ? 1 : 0
   tickEvent(run, room)
-  tickHazard(run, room)
+  tickHazard(run, room, dt)
   tickFuses(run, dt)
   tryDoor(run, room)
 }
@@ -2398,22 +2414,91 @@ function tickEvent(run: Run, room: RoomNode): void {
   }
 }
 
-function tickHazard(run: Run, room: RoomNode): void {
+function noteHazard(run: Run, kind: string): void {
+  const mark = `haz:${kind}`
+  if (run.flags?.includes(mark)) return
+  run.flags = [...(run.flags ?? []), mark]
+  float(run, t(`haz.${kind}` as 'haz.root'))
+}
+
+function hurtHazard(run: Run, prop: PropNode, amount: number): void {
+  const mark = `hurt:${prop.id}:${Math.floor(run.age * 2)}`
+  if (run.flags?.includes(mark)) return
+  run.flags = [...(run.flags ?? []), mark]
+  hurtPlayer(run, amount, prop.x, prop.y)
+}
+
+function tickHazard(run: Run, room: RoomNode, h: number): void {
   const chart = run.chart
   if (!chart) return
+  const depth = run.depth || 1
   for (const prop of chart.props) {
     if (prop.room !== room.id || prop.state === 'spent') continue
+    const dist = Math.hypot(prop.x - run.x, prop.y - run.y)
+    if (prop.kind === 'cart') {
+      const dir = prop.lane || 1
+      prop.x += dir * 76 * h
+      if (prop.x > 84) prop.lane = -1
+      if (prop.x < -84) prop.lane = 1
+      if (Math.hypot(prop.x - run.x, prop.y - run.y) < 18) {
+        noteHazard(run, 'cart')
+        hurtHazard(run, prop, 12 + depth * 2)
+      }
+      continue
+    }
+    if (prop.kind === 'cloud') {
+      if (prop.lane == null) prop.lane = prop.x
+      prop.x = Math.max(-78, Math.min(78, prop.lane + Math.sin(run.age * 0.85 + prop.y) * 24))
+      if (Math.hypot(prop.x - run.x, prop.y - run.y) < 22) {
+        noteHazard(run, 'cloud')
+        hurtHazard(run, prop, 8 + depth)
+      }
+      continue
+    }
+    if (prop.kind === 'vent') {
+      const cycle = (run.age + (prop.x + prop.y) * 0.01) % 2.6
+      prop.fuse = cycle > 1.55 ? 2.6 - cycle : 0
+      if (cycle > 2.15 && dist < 30) {
+        noteHazard(run, 'vent')
+        hurtHazard(run, prop, 14 + depth * 2)
+      }
+      continue
+    }
+    if (prop.kind === 'pod') {
+      if ((prop.tickAt ?? 0) > 0) {
+        prop.tickAt = Math.max(0, (prop.tickAt ?? 0) - h)
+        prop.fuse = 0.9
+        continue
+      }
+      if (dist < 44) {
+        noteHazard(run, 'pod')
+        prop.fuse = Math.max(0, (prop.fuse ?? 0.9) - h)
+        if ((prop.fuse ?? 0) <= 0) {
+          hurtPlayer(run, 14 + depth, prop.x, prop.y)
+          prop.fuse = 0.9
+          prop.tickAt = 1.4
+        }
+      } else prop.fuse = 0.9
+      continue
+    }
+    if (prop.kind === 'root' && dist < 22) {
+      noteHazard(run, 'root')
+      run.snare = Math.max(run.snare ?? 0, 0.9)
+      continue
+    }
+    if (prop.kind === 'cocoon' && dist < 24) {
+      noteHazard(run, 'cocoon')
+      run.snare = Math.max(run.snare ?? 0, 1.7)
+      continue
+    }
     if (prop.kind !== 'puddle' && prop.kind !== 'lava' && prop.kind !== 'web' && prop.kind !== 'thorn' && prop.kind !== 'debris') continue
-    if (Math.hypot(prop.x - run.x, prop.y - run.y) > 18) continue
+    if (dist > 18) continue
     if (prop.kind === 'web') {
       run.snare = Math.max(run.snare ?? 0, 1.1)
       continue
     }
-    const mark = `hurt:${prop.id}:${Math.floor(run.age * 2)}`
-    if (run.flags?.includes(mark)) continue
-    run.flags?.push(mark)
     const amount = prop.kind === 'lava' ? 16 : prop.kind === 'puddle' ? 8 : 14
-    hurtPlayer(run, amount, prop.x, prop.y)
+    hurtHazard(run, prop, amount)
   }
 }
 
@@ -2637,7 +2722,7 @@ export function usableProp(run: Run): PropNode | null {
     if (prop.room !== run.roomId || prop.state === 'spent') continue
     if (prop.kind === 'crack' && prop.state === 'open') continue
     if (prop.kind === 'chest' && prop.state === 'open') continue
-    if (prop.kind === 'puddle' || prop.kind === 'lava' || prop.kind === 'web' || prop.kind === 'debris' || prop.kind === 'thorn') continue
+    if (prop.kind === 'puddle' || prop.kind === 'lava' || prop.kind === 'web' || prop.kind === 'debris' || prop.kind === 'thorn' || prop.kind === 'root' || prop.kind === 'cloud' || prop.kind === 'pod' || prop.kind === 'cart' || prop.kind === 'cocoon' || prop.kind === 'vent') continue
     const dist = Math.hypot(prop.x - run.x, prop.y - run.y)
     if (dist < bestD) {
       best = prop
