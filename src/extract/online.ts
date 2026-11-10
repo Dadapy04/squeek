@@ -531,6 +531,18 @@ function notRanked(reason: string): string {
   return t('online.notRanked', { reason })
 }
 
+export function deathNote(): string {
+  return t('result.fell')
+}
+
+export function guestExtractNote(): string {
+  return `${t('result.guest')}\n${t('result.guestBoard')}`
+}
+
+export function keptRecordNote(best: number): string {
+  return t('online.kept', { n: best })
+}
+
 function tellRank(message: string): void {
   setText('cloudStatus', message)
   showAccountToast(message)
@@ -561,7 +573,7 @@ export async function noteExtract(report: RunReport): Promise<RunNotice> {
   }
   try {
     const response = await api('/v1/runs/extract', { method: 'POST', body: JSON.stringify({ token, ...report }) })
-    const body = await response.json().catch(() => ({})) as { reason?: string; error?: string; depth?: number; elapsedMs?: number; ranked?: boolean; state?: unknown }
+    const body = await response.json().catch(() => ({})) as { reason?: string; error?: string; depth?: number; elapsedMs?: number; ranked?: boolean; record?: boolean; bestValue?: number; state?: unknown }
     if (body.state) {
       permitRunEnd()
       hooks.setSave(saveFromBlob(JSON.stringify(body.state)))
@@ -578,7 +590,7 @@ export async function noteExtract(report: RunReport): Promise<RunNotice> {
       tellRank(message)
       return { ok: true, ranked: false, message }
     }
-    const message = t('online.ranked')
+    const message = body.record === false && typeof body.bestValue === 'number' ? keptRecordNote(body.bestValue) : t('online.ranked')
     setText('cloudStatus', message)
     return { ok: true, ranked: true, message }
   } catch {
@@ -591,7 +603,7 @@ export async function noteExtract(report: RunReport): Promise<RunNotice> {
 export async function noteDeath(depth: number): Promise<RunNotice> {
   const token = liveToken()
   if (!token || !hooks || !readSession(hooks.storage)) {
-    const message = notRanked(t('online.why.token'))
+    const message = t('online.why.token')
     tellRank(message)
     return { ok: false, ranked: false, message }
   }
@@ -603,15 +615,14 @@ export async function noteDeath(depth: number): Promise<RunNotice> {
       hooks.setSave(saveFromBlob(JSON.stringify(body.state)))
     }
     if (!response.ok) {
-      const message = notRanked(t('online.why.net'))
+      const message = t('online.why.net')
       tellRank(message)
       return { ok: false, ranked: false, message }
     }
     armRun(undefined)
-    const message = notRanked(t('online.why.dead'))
-    return { ok: true, ranked: false, message }
+    return { ok: true, ranked: false, message: deathNote() }
   } catch {
-    const message = notRanked(t('online.why.net'))
+    const message = t('online.why.net')
     tellRank(message)
     return { ok: false, ranked: null, message }
   }

@@ -1,3 +1,4 @@
+import { boardSql, personalBestSql } from './board.ts'
 import { ALTERS, RETIRE_BLOBS, SCHEMA } from './schema.ts'
 import { applyDeath, applyExtract, buyMerchant, chooseWeapon, fieldBuy, freshAccount, mendShield, replayTutorialAccount, seeTip, sellCommon, sellUnit, settleOneWeapon, skipTutorial, startRun, undoRun, upgradeBag, upgradeWeapon, type Account, type LootRow, type Pick } from '../../shared/account.ts'
 import { checksumAddress, isAddress, normAddress, randomNonce, readMessageAddress, readNonce, recoverAddress, siweMessage, uriAllowed } from './siwe.ts'
@@ -285,8 +286,19 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
     if (!applied.ok) return json({ error: applied.reason, state: loaded.account }, 422)
     await env.DB.prepare('UPDATE runs SET status = ?, depth = ?, value = ?, reason = ?, elapsed_ms = ? WHERE id = ?').bind(verdict.flagged ? 'flagged' : 'accepted', verdict.depth, verdict.value, verdict.reason ?? null, elapsedMs, run.id).run()
     await env.DB.prepare('INSERT INTO scores (run_id, address, depth, value, week, created_at, flagged) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(run.id, address, verdict.depth, verdict.value, weekKey(now), now, verdict.flagged ? 1 : 0).run()
+    const best = await env.DB.prepare(personalBestSql()).bind(address).first<{ run_id: string; value: number; depth: number }>()
     const revision = await storeAccount(env, address, loaded.account, now)
-    return json({ accepted: true, ranked: !verdict.flagged, value: verdict.value, depth: verdict.depth, flagged: verdict.flagged, revision, state: loaded.account })
+    return json({
+      accepted: true,
+      ranked: !verdict.flagged,
+      record: best?.run_id === run.id,
+      bestValue: best?.value ?? verdict.value,
+      value: verdict.value,
+      depth: verdict.depth,
+      flagged: verdict.flagged,
+      revision,
+      state: loaded.account,
+    })
   }
 
   if (request.method === 'GET' && path === '/v1/leaderboard') {
@@ -294,9 +306,7 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
     const metric = url.searchParams.get('metric') === 'depth' ? 'depth' : 'value'
     const span = url.searchParams.get('span') === 'week' ? 'week' : 'all'
     const week = weekKey(now)
-    const rows = metric === 'depth'
-      ? await env.DB.prepare(`SELECT address, MAX(depth) AS depth, MAX(value) AS value FROM scores WHERE flagged = 0 AND (? = 'all' OR week = ?) GROUP BY address ORDER BY depth DESC, value DESC LIMIT 20`).bind(span, week).all<{ address: string; depth: number; value: number }>()
-      : await env.DB.prepare(`SELECT address, MAX(value) AS value, MAX(depth) AS depth FROM scores WHERE flagged = 0 AND (? = 'all' OR week = ?) GROUP BY address ORDER BY value DESC, depth DESC LIMIT 20`).bind(span, week).all<{ address: string; value: number; depth: number }>()
+    const rows = await env.DB.prepare(boardSql(metric)).bind(span, week, span, week).all<{ address: string; depth: number; value: number }>()
     const names = new Map<string, string>()
     for (const row of rows.results) {
       const profile = await env.DB.prepare('SELECT name FROM profiles WHERE address = ?').bind(row.address).first<{ name: string | null }>()

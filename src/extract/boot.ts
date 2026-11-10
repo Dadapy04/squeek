@@ -17,7 +17,7 @@ import { loadExtract, writeExtract } from './save.ts'
 import { ITEM_NAME, RARITY_COLOR, RARITY_NAME, STASH_SLOTS, type CoinRarity, type ItemUnit } from './coins.ts'
 import { bladeDisplay, bossDisplay, depthPlan } from './depths.ts'
 import { currentLocale, onLocale, setLocale, t, type MsgKey } from './i18n.ts'
-import { armRun, mountOnline, noteDeath, noteExtract, noteRunBoundary, offerSessionRestore, refreshOnline, takeRunEndPermit, takeRunSeed, walletAct, walletLive, walletSettled } from './online.ts'
+import { armRun, deathNote, guestExtractNote, mountOnline, noteDeath, noteExtract, noteRunBoundary, offerSessionRestore, refreshOnline, takeRunEndPermit, takeRunSeed, walletAct, walletLive, walletSettled } from './online.ts'
 import { reportFromRun } from './run-report.ts'
 import { roomAt } from './dungeon.ts'
 import { markSeen, replayTutorial, skipTutorial, tipAnchor, tipToShow, type TipId, type TutorialWorld } from './tutorial.ts'
@@ -1438,8 +1438,7 @@ function finish(kind: 'extracted' | 'dead'): void {
   outcome = kind
   lastResult = { kind, rows: carried, gained }
   writeExtract(storage, save)
-  const guestReason = kind === 'extracted' ? t('online.why.guest') : t('online.why.dead')
-  paintResult(kind, carried, gained, t('online.notRanked', { reason: guestReason }))
+  paintResult(kind, carried, gained, kind === 'extracted' ? guestExtractNote() : deathNote())
 }
 
 async function finishWallet(kind: 'extracted' | 'dead', report: ReturnType<typeof reportFromRun> | null, carried: ResultRow[], gained: number, depth: number): Promise<void> {

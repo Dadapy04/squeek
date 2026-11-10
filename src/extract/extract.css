@@ -292,6 +292,7 @@ button { cursor: pointer; }
   to { transform: none; opacity: 1; }
 }
 #resultValue { color: #d7a23a; }
+#resultRank { white-space: pre-line; margin: 0 0 8px; color: #f0d7a4; }
 #result #again { width: 100%; min-height: 48px; margin-top: 4px; font-size: 18px; flex: 0 0 auto; }
 @media (max-height: 440px) and (orientation: portrait) {
   #resultPanel { padding: 8px 12px 10px; }
