@@ -7,6 +7,7 @@ import { AUDIO_KEY, playSoulBurst, playSoulCharge, readAudioPref, resumeAudio } 
 import { armAttack, attackLive, blockSecondTap, disarmAttack, holdReleased, type AttackBuffer } from './input-lock.ts'
 import { bossTitle, drawChestStrip, drawExtract, drawGallery, drawLootStrip, drawRevealStrip, setEffectBudget } from './view.ts'
 import { backingRatio } from './camera.ts'
+import { drawMapSheet } from './map-sprites.ts'
 import { drawMinimap, reveal } from './minimap.ts'
 import { loadExtract, writeExtract } from './save.ts'
 import { ITEM_NAME, RARITY_COLOR, RARITY_NAME, STASH_SLOTS, type CoinRarity, type ItemUnit } from './coins.ts'
@@ -908,6 +909,7 @@ window.addEventListener('keyup', (event) => {
 })
 
 let hudOpen = false
+let sheetHold = false
 let last = performance.now()
 let sinceSave = 0
 let workEma = 8
@@ -921,7 +923,7 @@ function noteFrameWork(ms: number): void {
   if (frameWorkN < frameWork.length) frameWorkN += 1
 }
 function frame(now: number): void {
-  if (document.hidden) {
+  if (document.hidden || sheetHold) {
     last = now
     requestAnimationFrame(frame)
     return
@@ -1803,6 +1805,7 @@ declare global {
       loot: () => string
       reveal: () => string
       pose: (depth: number, kind: string) => { depth: number; theme: string; room: string; zone: string } | null
+      mapSheet: () => void
     }
   }
 }
@@ -1856,12 +1859,28 @@ window.__npcsExtract = {
       if (room) {
         run.zone = room.zone
         run.roomId = room.id
-        run.x = room.role === 'extract' || room.role === 'fast' ? 0 : 8
-        run.y = room.role === 'extract' || room.role === 'fast' ? -80 : 16
+        const stall = chart?.props.find((item) => item.kind === 'vendor' && item.room === room.id)
+        if (room.role === 'merchant' && stall) {
+          run.x = stall.x - 28
+          run.y = stall.y + 16
+          run.facing = 0
+        } else {
+          run.x = room.role === 'extract' || room.role === 'fast' ? 0 : 8
+          run.y = room.role === 'extract' || room.role === 'fast' ? -80 : 16
+        }
         run.seenRooms = [...new Set([...(run.seenRooms ?? []), room.id])]
       }
     }
     return { depth: run.depth, theme: run.chart?.theme ?? '', room: run.roomId ?? '', zone: run.zone }
+  },
+  mapSheet: () => {
+    sheetHold = true
+    const board = document.querySelector<HTMLCanvasElement>('#view')
+    const pen = board?.getContext('2d')
+    if (!board || !pen) return
+    board.width = 844
+    board.height = 390
+    drawMapSheet(pen, board.width, board.height)
   },
   frameWork: () => {
     const sample = Array.from(frameWork.subarray(0, frameWorkN))

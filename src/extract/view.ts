@@ -6,6 +6,7 @@ import { spearReach, spearRgb } from './spear.ts'
 import { bossDisplay, bossPattern, depthPlan, foeName, lineup, type AttackKind } from './depths.ts'
 import { t } from './i18n.ts'
 import { roomAt, themeFor } from './dungeon.ts'
+import { blitMotif, interactable, mapLabel, spriteIdFor } from './map-sprites.ts'
 import { EXTRACT_ZONE, FOE_SPOTS, NEST_DOOR, SOUL_CAST, SOUL_RADIUS, STAIRS, SWING_REACH, ZONE_H, ZONE_W, claimTarget, depthMods, foeView, isSpecial, nestGap, runCrates, stairsOpen, syncCentipede, swordAim, type Drop, type Foe, type Run } from './sim.ts'
 
 interface Puff {
@@ -1079,63 +1080,64 @@ function drawDungeonDress(
   ctx.globalAlpha = 1
   for (const vein of run.chart?.veins ?? []) {
     if (vein.hp <= 0 || vein.room !== run.roomId) continue
-    const p = at(vein.x, vein.y)
-    const s = Math.max(1, scale)
-    ctx.fillStyle = '#2a241c'
-    ctx.fillRect(Math.round(p.x - 6 * s), Math.round(p.y - 8 * s), Math.round(12 * s), Math.round(14 * s))
-    ctx.fillStyle = vein.big ? '#f2c04a' : vein.rarity === 'legenda' ? '#f2c04a' : vein.rarity === 'pusaka' ? '#b388ff' : vein.rarity === 'langka' ? '#7ec8c4' : '#c4a15a'
-    const glint = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(run.age * 5 + vein.x))
-    ctx.globalAlpha = glint
-    const w = vein.big ? 16 : 7
-    const h = vein.big ? 14 : 8
-    if (vein.big) {
-      ctx.fillStyle = '#f2c04a'
-      ctx.globalAlpha = 0.35
-      ctx.fillRect(Math.round(p.x - 14 * s), Math.round(p.y - 12 * s), Math.round(28 * s), Math.round(24 * s))
-      ctx.globalAlpha = glint
-    }
-    ctx.fillRect(Math.round(p.x - w * s * 0.5), Math.round(p.y - h * s * 0.5), Math.round(w * s), Math.round(h * s))
-    ctx.globalAlpha = 1
-    ctx.fillStyle = '#f7e7a0'
-    ctx.fillRect(Math.round(p.x), Math.round(p.y - 2 * s), s, s)
+    const id = spriteIdFor('vein', vein.ore, vein.big)
+    placeMarked(ctx, at, scale, run, vein.x, vein.y, id, true)
     const cracks = vein.max - vein.hp
-    ctx.fillStyle = '#1a140f'
-    for (let c = 0; c < cracks; c += 1) ctx.fillRect(Math.round(p.x - 3 * s + c * 2 * s), Math.round(p.y + s), s, Math.round(3 * s))
+    if (cracks > 0) {
+      const p = at(vein.x, vein.y)
+      ctx.fillStyle = '#1a140f'
+      for (let c = 0; c < cracks; c += 1) {
+        ctx.fillRect(Math.round(p.x - 4 * scale + c * 2 * scale), Math.round(p.y - 2 * scale), Math.max(1, scale), Math.round(4 * scale))
+      }
+    }
   }
   for (const prop of run.chart?.props ?? []) {
     if (prop.room !== run.roomId || prop.state === 'spent') continue
-    const p = at(prop.x, prop.y)
-    const s = Math.max(1, scale)
-    if (prop.kind === 'barrel') {
-      ctx.fillStyle = '#8a5a32'
-      ctx.fillRect(Math.round(p.x - 4 * s), Math.round(p.y - 5 * s), Math.round(8 * s), Math.round(8 * s))
-    } else if (prop.kind === 'crate') {
-      ctx.fillStyle = '#6b4424'
-      ctx.fillRect(Math.round(p.x - 5 * s), Math.round(p.y - 4 * s), Math.round(10 * s), Math.round(7 * s))
-    } else if (prop.kind === 'chest') {
-      ctx.fillStyle = prop.state === 'open' ? '#4a3828' : '#c4a15a'
-      ctx.fillRect(Math.round(p.x - 6 * s), Math.round(p.y - 4 * s), Math.round(12 * s), Math.round(8 * s))
-    } else if (prop.kind === 'shrine') {
-      ctx.fillStyle = '#7ec8c4'
-      ctx.globalAlpha = 0.35
-      ctx.fillRect(Math.round(p.x - 10 * s), Math.round(p.y - 6 * s), Math.round(20 * s), Math.round(10 * s))
-      ctx.globalAlpha = 1
-    } else if (prop.kind === 'vendor') {
-      ctx.fillStyle = '#f2c04a'
-      ctx.fillRect(Math.round(p.x - 6 * s), Math.round(p.y - 8 * s), Math.round(12 * s), Math.round(10 * s))
-    } else if (prop.kind === 'crack') {
-      ctx.fillStyle = '#d5dee6'
-      ctx.fillRect(Math.round(p.x - 2 * s), Math.round(p.y - 8 * s), s, Math.round(12 * s))
-      ctx.fillRect(Math.round(p.x + 2 * s), Math.round(p.y - 4 * s), s, Math.round(8 * s))
-    } else if (prop.kind === 'puddle' || prop.kind === 'lava' || prop.kind === 'web' || prop.kind === 'debris' || prop.kind === 'thorn') {
-      ctx.fillStyle = paint.hazard
-      ctx.globalAlpha = 0.55
-      ctx.fillRect(Math.round(p.x - 8 * s), Math.round(p.y - 4 * s), Math.round(16 * s), Math.round(8 * s))
-      ctx.globalAlpha = 1
-    } else if (prop.kind === 'lever') {
-      ctx.fillStyle = '#c4b8a4'
-      ctx.fillRect(Math.round(p.x), Math.round(p.y - 6 * s), s, Math.round(8 * s))
+    const id = spriteIdFor(prop.kind, undefined, false, prop.state === 'open')
+    placeMarked(ctx, at, scale, run, prop.x, prop.y, id, interactable(id))
+    if (prop.kind === 'chest' && prop.lock === 'key' && prop.state !== 'open') {
+      blitMotif(ctx, 'key', at(prop.x + 8, prop.y).x, at(prop.x, prop.y - 10).y, Math.max(1, scale * 0.8))
     }
+  }
+}
+
+function placeMarked(
+  ctx: CanvasRenderingContext2D,
+  at: (x: number, y: number) => { x: number; y: number },
+  scale: number,
+  run: Run,
+  x: number,
+  y: number,
+  id: string,
+  spark: boolean,
+): void {
+  const p = at(x, y)
+  blitMotif(ctx, id, p.x, p.y, scale)
+  if (spark) sparkle(ctx, p.x, p.y, scale, run.age, x + y)
+  if (Math.hypot(run.x - x, run.y - y) < 42) {
+    const name = mapLabel(id.startsWith('vein') ? 'vein' : id, id.replace('vein-', ''), id === 'vein-big', id === 'chest-open')
+    ctx.save()
+    ctx.font = '12px Courier New, monospace'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'bottom'
+    ctx.lineWidth = 3
+    ctx.strokeStyle = '#14110e'
+    ctx.strokeText(name, p.x, p.y - 18 * scale)
+    ctx.fillStyle = '#f6ecd8'
+    ctx.fillText(name, p.x, p.y - 18 * scale)
+    ctx.restore()
+  }
+}
+
+function sparkle(ctx: CanvasRenderingContext2D, x: number, y: number, scale: number, age: number, seed: number): void {
+  const s = Math.max(1, Math.round(scale))
+  for (let i = 0; i < 3; i += 1) {
+    if (Math.sin(age * 6 + seed * 0.01 + i * 1.7) < 0.1) continue
+    const ox = Math.cos(i * 2.2 + seed) * 9 * scale
+    const oy = Math.sin(i * 2.2 + seed) * 7 * scale - 8 * scale
+    ctx.fillStyle = i === 0 ? '#f7fbff' : '#f7e7a0'
+    ctx.fillRect(Math.round(x + ox), Math.round(y + oy), s, s * 2)
+    ctx.fillRect(Math.round(x + ox - s), Math.round(y + oy + s * 0.5), s * 3, s)
   }
 }
 

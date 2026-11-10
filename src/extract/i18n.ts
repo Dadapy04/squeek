@@ -339,6 +339,17 @@ export const DICT = {
   'theme.mine': { id: 'Tambang rel', en: 'Rail mine' },
   'theme.web': { id: 'Sarang jaring', en: 'Web nest' },
   'theme.maw': { id: 'Jurang mulut', en: 'Mine abyss' },
+  'prop.barrel': { id: 'Gentong', en: 'Barrel' },
+  'prop.crate': { id: 'Peti kayu', en: 'Wood crate' },
+  'prop.chest': { id: 'Peti terkunci', en: 'Locked chest' },
+  'prop.open': { id: 'Peti terbuka', en: 'Open chest' },
+  'prop.lever': { id: 'Tuas', en: 'Lever' },
+  'prop.crack': { id: 'Dinding retak', en: 'Cracked wall' },
+  'prop.puddle': { id: 'Genangan', en: 'Puddle' },
+  'prop.lava': { id: 'Retak panas', en: 'Hot crack' },
+  'prop.web': { id: 'Jaring', en: 'Web' },
+  'prop.debris': { id: 'Batu lepas', en: 'Loose rock' },
+  'prop.thorn': { id: 'Duri', en: 'Thorns' },
 } as const satisfies Record<string, Row>
 
 export type MsgKey = keyof typeof DICT
