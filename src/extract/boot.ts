@@ -17,7 +17,7 @@ import { loadExtract, writeExtract } from './save.ts'
 import { ITEM_NAME, RARITY_COLOR, RARITY_NAME, STASH_SLOTS, type CoinRarity, type ItemUnit } from './coins.ts'
 import { bladeDisplay, bossDisplay, depthPlan } from './depths.ts'
 import { currentLocale, onLocale, setLocale, t, type MsgKey } from './i18n.ts'
-import { mountOnline, noteExtract, refreshOnline, takeRunSeed } from './online.ts'
+import { armRun, mountOnline, noteExtract, refreshOnline, takeRunSeed } from './online.ts'
 import { reportFromRun } from './run-report.ts'
 import { roomAt } from './dungeon.ts'
 import { markSeen, replayTutorial, skipTutorial, tipAnchor, tipToShow, type TipId, type TutorialWorld } from './tutorial.ts'
@@ -186,18 +186,32 @@ document.querySelector<HTMLButtonElement>('#titleFull')!.addEventListener('point
 
 deployBtn.addEventListener('click', () => { void beginDeploy() })
 async function beginDeploy(): Promise<void> {
+  if (deployBtn.disabled) return
+  deployBtn.disabled = true
   requestStageFullscreen()
-  const seed = await takeRunSeed()
-  const error = deploy(save, picks.map((stack) => ({ ...stack })), bringShield, seed)
+  if (save.run) {
+    const error = deploy(save, picks.map((stack) => ({ ...stack })), bringShield)
+    deployBtn.disabled = false
+    if (error) {
+      deployError.hidden = false
+      deployError.textContent = error
+    }
+    return
+  }
+  const issued = await takeRunSeed()
+  const error = deploy(save, picks.map((stack) => ({ ...stack })), bringShield, issued?.seed)
   if (error) {
+    deployBtn.disabled = false
     deployError.hidden = false
     deployError.textContent = error
     return
   }
+  armRun(issued?.token)
   picks = []
   bringShield = false
   outcome = null
   writeExtract(storage, save)
+  deployBtn.disabled = false
   show('field')
 }
 
@@ -1754,7 +1768,7 @@ function renderBase(): void {
   const held = stashGroups()
   const panel = document.createElement('div')
   panel.className = 'inv'
-  panel.append(invHead(t('stash.value', { n: total }), `${held.used}/${STASH_SLOTS}`))
+  panel.append(invHead(t('stash.value', { n: total }), t('stash.count', { n: held.used, max: STASH_SLOTS })))
   const gear = document.createElement('div')
   gear.className = 'inv-gear'
   const swordLeft = count(save.stash, 'sword') - count(picks, 'sword')

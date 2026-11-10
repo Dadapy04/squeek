@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { onlineEnabled, phoneLayout, walletButtons } from '../src/extract/online-flag.ts'
 import { reportFromRun } from '../src/extract/run-report.ts'
-import { decideSync, hasLocalProgress } from '../src/extract/sync-choice.ts'
+import { decideSync, hasLocalProgress, recommendSide } from '../src/extract/sync-choice.ts'
 import { deploy, freshSave, freshValue } from '../src/extract/sim.ts'
 
 describe('online flag and cloud choice', () => {
@@ -25,6 +25,12 @@ describe('online flag and cloud choice', () => {
     expect(decideSync({ dirty: true, revision: 2, progress: true }, { revision: 3 })).toBe('ask')
     expect(decideSync({ dirty: false, revision: 2, progress: true }, { revision: 3 })).toBe('download')
     expect(decideSync({ dirty: true, revision: 3, progress: true }, { revision: 3 })).toBe('upload')
+    expect(decideSync({ dirty: true, revision: null, progress: false, hold: false }, null)).toBe('upload')
+    expect(decideSync({ dirty: true, revision: 4, progress: true, hold: true }, { revision: 4 })).toBe('ask')
+    const local = { coins: 40, stash: 200, depth: 3, ventures: 2, updatedAt: 10 }
+    const cloud = { coins: 5, stash: 20, depth: 1, ventures: 1, updatedAt: 99 }
+    expect(recommendSide(local, cloud)).toBe('local')
+    expect(recommendSide(cloud, local)).toBe('cloud')
     expect(hasLocalProgress(freshSave())).toBe(false)
     const played = freshSave()
     played.ventures = 1

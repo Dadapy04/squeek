@@ -1,5 +1,5 @@
-import { SCHEMA } from './schema.ts'
-import { isAddress, normAddress, randomNonce, readMessageAddress, readNonce, recoverAddress, siweMessage } from './siwe.ts'
+import { ALTERS, SCHEMA } from './schema.ts'
+import { checksumAddress, isAddress, normAddress, randomNonce, readMessageAddress, readNonce, recoverAddress, siweMessage, uriAllowed } from './siwe.ts'
 import { judgeRun, weekKey, type RunEvent } from './rules.ts'
 
 export interface Env {
@@ -21,6 +21,9 @@ async function ensureSchema(db: D1Database): Promise<void> {
   if (!schemaReady) {
     schemaReady = (async () => {
       for (const sql of SCHEMA) await db.prepare(sql).run()
+      for (const sql of ALTERS) {
+        try { await db.prepare(sql).run() } catch { /* column already present */ }
+      }
     })()
   }
   await schemaReady
@@ -144,8 +147,12 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
     const nonce = randomNonce()
     const issuedAt = new Date(now).toISOString()
     const expirationTime = new Date(now + NONCE_MS).toISOString()
+    const chainRaw = Number(body?.chainId)
+    const chainId = Number.isInteger(chainRaw) && chainRaw > 0 && chainRaw < 1_000_000 ? chainRaw : 1
+    const requested = typeof body?.uri === 'string' ? body.uri : ''
+    const uri = uriAllowed(requested, env.SIWE_DOMAIN) ? requested : env.SIWE_URI
     await env.DB.prepare('INSERT INTO nonces (nonce, address, expires_at) VALUES (?, ?, ?)').bind(nonce, id, now + NONCE_MS).run()
-    const message = siweMessage({ domain: env.SIWE_DOMAIN, address: id, uri: env.SIWE_URI, nonce, issuedAt, expirationTime })
+    const message = siweMessage({ domain: env.SIWE_DOMAIN, address: checksumAddress(id), uri, nonce, issuedAt, expirationTime, chainId })
     return json({ nonce, message, issuedAt, expirationTime })
   }
 
@@ -256,11 +263,12 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
       events,
       elapsedMs: now - run.issued_at,
     })
+    const elapsedMs = now - run.issued_at
     if (!verdict.ok) {
-      await env.DB.prepare('UPDATE runs SET status = ?, reason = ? WHERE id = ?').bind('rejected', verdict.reason, run.id).run()
-      return json({ accepted: false, ranked: false, reason: verdict.reason }, 422)
+      await env.DB.prepare('UPDATE runs SET status = ?, reason = ?, depth = ?, value = ?, elapsed_ms = ? WHERE id = ?').bind('rejected', verdict.reason, Number(body?.depth) || null, Number(body?.value) || null, elapsedMs, run.id).run()
+      return json({ accepted: false, ranked: false, reason: verdict.reason, depth: Number(body?.depth) || null, value: Number(body?.value) || null, elapsedMs }, 422)
     }
-    await env.DB.prepare('UPDATE runs SET status = ?, depth = ?, value = ?, reason = ? WHERE id = ?').bind(verdict.flagged ? 'flagged' : 'accepted', verdict.depth, verdict.value, verdict.reason ?? null, run.id).run()
+    await env.DB.prepare('UPDATE runs SET status = ?, depth = ?, value = ?, reason = ?, elapsed_ms = ? WHERE id = ?').bind(verdict.flagged ? 'flagged' : 'accepted', verdict.depth, verdict.value, verdict.reason ?? null, elapsedMs, run.id).run()
     await env.DB.prepare('INSERT INTO scores (run_id, address, depth, value, week, created_at, flagged) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(run.id, address, verdict.depth, verdict.value, weekKey(now), now, verdict.flagged ? 1 : 0).run()
     return json({ accepted: true, ranked: !verdict.flagged, value: verdict.value, depth: verdict.depth, flagged: verdict.flagged })
   }

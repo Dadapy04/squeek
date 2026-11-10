@@ -46,3 +46,8 @@ export const SCHEMA = [
   )`,
   `CREATE INDEX IF NOT EXISTS scores_board ON scores (flagged, week, value DESC, depth DESC)`,
 ]
+
+/** Added after the first deploy. Duplicate-column errors are ignored by the worker. */
+export const ALTERS = [
+  `ALTER TABLE runs ADD COLUMN elapsed_ms INTEGER`,
+]

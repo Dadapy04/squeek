@@ -11,6 +11,29 @@ export function normAddress(value: string): string {
   return value.toLowerCase()
 }
 
+/** EIP-55 mixed-case form. The message must carry this, not a lowercase address. */
+export function checksumAddress(value: string): string {
+  const lower = normAddress(value).slice(2)
+  const hash = bytesToHex(keccak_256(enc.encode(lower)))
+  let out = '0x'
+  for (let i = 0; i < lower.length; i += 1) {
+    const digit = Number.parseInt(hash[i] ?? '0', 16)
+    out += digit >= 8 ? lower[i]!.toUpperCase() : lower[i]
+  }
+  return out
+}
+
+export function uriAllowed(uri: string, domain: string): boolean {
+  try {
+    const url = new URL(uri)
+    const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1'
+    const https = url.protocol === 'https:' || (local && url.protocol === 'http:')
+    return https && url.host === domain
+  } catch {
+    return false
+  }
+}
+
 export function siweMessage(input: {
   domain: string
   address: string
@@ -20,12 +43,12 @@ export function siweMessage(input: {
   expirationTime: string
   chainId?: number
 }): string {
-  const address = normAddress(input.address)
+  const address = checksumAddress(input.address)
   return [
     `${input.domain} wants you to sign in with your Ethereum account:`,
     address,
     '',
-    'Sign in to Squeek. This does not send a transaction.',
+    'Sign in to Squeek. No transaction, no gas, no approval.',
     '',
     `URI: ${input.uri}`,
     'Version: 1',

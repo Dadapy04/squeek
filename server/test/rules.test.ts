@@ -25,6 +25,10 @@ describe('anti-cheat', () => {
     lied.value = 999
     expect(judgeRun(lied).ok).toBe(false)
     expect(judgeRun(claim(1, [3], 30_000)).ok).toBe(false)
+    const beeline = judgeRun(claim(1, [8], 5_000))
+    expect(beeline.ok).toBe(true)
+    if (beeline.ok) expect(beeline.flagged).toBe(false)
+    expect(judgeRun(claim(1, [8], 1_000)).ok).toBe(false)
   })
 
   it('flags a haul that is legal but suspiciously rich', () => {

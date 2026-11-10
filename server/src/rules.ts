@@ -2,7 +2,8 @@
 
 export const DEPTH_CAP = 7
 export const MAX_RUN_MS = 6 * 60 * 60 * 1000
-const MIN_SECONDS = [0, 8, 20, 40, 70, 110, 160, 220]
+/** Wall-clock floor. Depth 1 is a walk to the circle plus the 3s channel, so 8s rejected real clears. */
+const MIN_SECONDS = [0, 3, 10, 18, 28, 40, 55, 75]
 const HARD_CAP = [0, 800, 1200, 1600, 2000, 2600, 3200, 4000]
 const COIN_MIN = 4
 const COIN_MAX = 88
@@ -66,7 +67,7 @@ export function judgeRun(claim: RunClaim): Verdict {
   if (!Number.isInteger(claim.value) || claim.value !== value) return { ok: false, reason: 'total' }
   const cap = HARD_CAP[depth] ?? 0
   if (value > cap) return { ok: false, reason: 'cap' }
-  const flagged = value > Math.floor(cap * 0.85) || elapsedSec < (MIN_SECONDS[depth] ?? 0) * 1.5
+  const flagged = value > Math.floor(cap * 0.85)
   return flagged
     ? { ok: true, value, depth, flagged: true, reason: 'suspicious' }
     : { ok: true, value, depth, flagged: false }

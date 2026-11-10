@@ -1,0 +1,1 @@
+ALTER TABLE runs ADD COLUMN elapsed_ms INTEGER;
