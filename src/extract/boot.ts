@@ -1391,13 +1391,16 @@ function carriedRows(run: NonNullable<ExtractSave['run']>): ResultRow[] {
   return rows
 }
 
+let finishing = false
 function finish(kind: 'extracted' | 'dead'): void {
+  if (finishing) return
   const carried = save.run ? carriedRows(save.run) : []
   const gained = save.run ? freshValue(save.run) : 0
   const report = kind === 'extracted' && save.run ? reportFromRun(save.run) : null
   const depth = save.run?.depth || 1
   if (walletLive()) {
-    void finishWallet(kind, report, carried, gained, depth)
+    finishing = true
+    void finishWallet(kind, report, carried, gained, depth).finally(() => { finishing = false })
     return
   }
   if (kind === 'extracted') bankRun(save)
@@ -1410,16 +1413,19 @@ function finish(kind: 'extracted' | 'dead'): void {
 
 async function finishWallet(kind: 'extracted' | 'dead', report: ReturnType<typeof reportFromRun> | null, carried: ResultRow[], gained: number, depth: number): Promise<void> {
   const ok = kind === 'extracted' && report ? await noteExtract(report) : await noteDeath(depth)
+  const cloud = document.querySelector('#cloudStatus')?.textContent ?? ''
   if (!ok) {
     if (save.run) save.run.channel = 0
     else show('base')
     renderBase()
+    if (cloud) document.querySelector('#cloudStatus')!.textContent = cloud
     return
   }
   outcome = kind
   lastResult = { kind, rows: carried, gained }
   paintResult(kind, carried, gained)
   renderBase()
+  if (cloud) document.querySelector('#cloudStatus')!.textContent = cloud
 }
 
 function paintResult(kind: 'extracted' | 'dead', carried: ResultRow[], gained: number): void {
