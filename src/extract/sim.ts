@@ -1,5 +1,5 @@
 import { coinsFor, hashText, mintUnit, mixSeed, readUnit, type CoinRarity, type ItemOrigin, type ItemUnit } from './coins.ts'
-import { t, type MsgKey } from './i18n.ts'
+import { currentLocale, t, type MsgKey } from './i18n.ts'
 import { BOSS_RAGE_SEC, DEPTH_CAP, DEPTHS, bladeDisplay, bossChip, bossDisplay, bossPattern, bossPhaseOf, depthPlan, foeChip, frontGuarded, GUARD_FACTOR, makeBlade, rageMul, recommendDamage, type Blade, type Breed } from './depths.ts'
 import { bagSlotsOf, blockArc, MERCHANT, nextBagUpgrade, shieldMaxFor, swordBonusPct, swordDamage, upgradeCost, upgradeOre, type MerchantKind } from './economy.ts'
 import { SPEAR_ACTIVE, SPEAR_ARC, SPEAR_TOTAL, SPEAR_WIND, critLands, rollSpear, spearBossBonus, spearPower, spearReach, type Spear } from './spear.ts'
@@ -120,6 +120,8 @@ export interface Run {
   dodgeCd: number
   hurt: number
   floats: { text: string; life: number; dim?: boolean }[]
+  /** Seconds the bag button stays lit after loot lands in the bag. Not stored. */
+  bagPulse?: number
   /** Explored minimap tiles, `zone:col:row`. Optional on old saves. */
   explored: string[]
   /** Depth this run was started at. Old saves default to 1. */
@@ -986,7 +988,8 @@ function keepInsured(save: ExtractSave, run: Run): void {
 }
 
 function float(run: Run, text: string, dim = false): void {
-  if (text === t('room.shut') && run.floats.some((item) => item.text === text && item.life > 0.35)) return
+  const once = text === t('room.shut') || text === t('hud.bagFull')
+  if (once && run.floats.some((item) => item.text === text && item.life > 0.35)) return
   run.floats.push({ text, life: 0.8, dim })
   run.floats = run.floats.slice(-6)
 }
@@ -1334,6 +1337,7 @@ export function step(run: Run, input: Input, dt: number): StepResult {
   run.hurt = Math.max(0, run.hurt - h)
   run.breakFx = Math.max(0, run.breakFx - h)
   run.age += h
+  run.bagPulse = Math.max(0, (run.bagPulse ?? 0) - h)
   for (const item of run.floats) item.life -= h
   run.floats = run.floats.filter((item) => item.life > 0)
 
@@ -1682,36 +1686,22 @@ function openNear(run: Run): void {
   if (chipNearestVein(run)) return
   const crate = runCrates(run).find((item) => item.zone === run.zone && !run.opened.includes(item.id) && Math.hypot(item.x - run.x, item.y - run.y) < PROP_REACH)
   if (!crate) return
+  openContainer(run, crate)
+}
+
+function openContainer(run: Run, crate: Crate): void {
+  if (run.opened.includes(crate.id)) return
   run.opened.push(crate.id)
-  const count = crate.loot.length
   crate.loot.forEach((kind, index) => {
-    const ang = -Math.PI / 2 + (index - (count - 1) / 2) * 0.7
-    run.drops.push({
-      id: `${crate.id}-${kind}-${index}`,
-      kind,
-      x: crate.x + Math.cos(ang) * 18,
-      y: crate.y + Math.sin(ang) * 14,
-      born: run.age,
-      hover: 1.25 + index * 0.22,
-      fromX: crate.x,
-      fromY: crate.y,
-      spear: kind === 'tombak' ? crate.spear ?? rollSpear(run.seed * 13 + index + 1) : undefined,
-      unit: crate.blade && kind !== 'tombak' ? bossUnit(run, kind, index) : undefined,
-    })
+    const id = `${crate.id}-${kind}-${index}`
+    if (kind === 'tombak') {
+      pocketSpear(run, crate.spear ?? rollSpear(run.seed * 13 + index + 1), id)
+      return
+    }
+    const unit = crate.blade ? bossUnit(run, kind, index) : mintUnit(kind, mixSeed(crate.id.length * 17 + index * 13 + (run.seed || 1)), 'loot')
+    pocketUnit(run, kind, unit, id)
   })
-  if (crate.blade) {
-    run.drops.push({
-      id: `${crate.id}-blade`,
-      kind: 'sword',
-      x: crate.x,
-      y: crate.y + 16,
-      born: run.age,
-      hover: 1.4,
-      fromX: crate.x,
-      fromY: crate.y,
-      blade: crate.blade,
-    })
-  }
+  if (crate.blade) pocketBlade(run, crate.blade, `${crate.id}-blade`)
 }
 
 function bossUnit(run: Run, kind: ItemKind, index: number): ItemUnit {
@@ -2357,16 +2347,10 @@ function strikeVeins(run: Run): void {
 
 function grantVein(run: Run, vein: VeinNode): void {
   const need = vein.big ? 3 : 1
-  if (carriedCount(run) + need > bagSlotsOf(run.bagSlots)) {
-    vein.hp = 1
-    float(run, t('ore.full'))
-    return
-  }
   for (let i = 0; i < need; i += 1) {
     const coins = oreValue(vein.rarity, mixSeed(vein.id.length * 19 + (run.seed || 1) + i * 5))
-    addUnits(run.bag, 'ore', [{ rarity: vein.rarity, coins, origin: 'loot' }])
+    pocketUnit(run, 'ore', { rarity: vein.rarity, coins, origin: 'loot' }, `ore-${vein.id}-${i}`, vein.ore)
   }
-  float(run, vein.big ? t('ore.big') : t('ore.break'))
 }
 
 export function nearestVein(run: Run): VeinNode | null {
@@ -2448,6 +2432,7 @@ function strikeCracks(run: Run, lo: number, hi: number): void {
 function blowBarrel(run: Run, prop: PropNode): void {
   prop.state = 'spent'
   float(run, t('room.boom'))
+  spillLoot(run, prop)
   run.booms = [...(run.booms ?? []), { x: prop.x, y: prop.y, life: 0.45 }]
   hurtPlayer(run, 18, prop.x, prop.y)
   for (const foe of run.foes) {
@@ -2560,19 +2545,70 @@ function useProps(run: Run): boolean {
 
 function spillLoot(run: Run, prop: PropNode): void {
   prop.loot.forEach((kind, index) => {
-    const ang = -Math.PI / 2 + index * 0.6
-    run.drops.push({
-      id: `${prop.id}-${kind}-${index}`,
-      kind,
-      x: prop.x + Math.cos(ang) * 14,
-      y: prop.y + Math.sin(ang) * 12,
-      born: run.age,
-      hover: 0.8,
-      fromX: prop.x,
-      fromY: prop.y,
-      unit: { rarity: kind === 'relic' ? 'pusaka' : kind === 'shard' ? 'langka' : 'biasa', coins: oreValue(kind === 'relic' ? 'pusaka' : kind === 'shard' ? 'langka' : 'biasa', mixSeed(prop.id.length + index)), origin: 'loot' },
-    })
+    const rarity = kind === 'relic' ? 'pusaka' : kind === 'shard' ? 'langka' : 'biasa'
+    const coins = oreValue(rarity, mixSeed(prop.id.length + index))
+    pocketUnit(run, kind, { rarity, coins, origin: 'loot' }, `${prop.id}-${kind}-${index}`)
   })
+}
+
+function pocketName(kind: ItemKind, ore?: string): string {
+  if (kind === 'ore' && ore) {
+    const metal = t(`ore.${ore}` as 'ore.copper')
+    const shown = currentLocale() === 'id' ? metal.toLowerCase() : metal
+    return t('loot.oreName', { metal: shown })
+  }
+  return t(`item.${kind}` as 'item.scrap')
+}
+
+function beside(run: Run, index: number): { x: number; y: number } {
+  const ang = -Math.PI / 2 + index * 0.7
+  const margin = 20
+  return {
+    x: Math.max(-ZONE_W / 2 + margin, Math.min(ZONE_W / 2 - margin, run.x + Math.cos(ang) * 16)),
+    y: Math.max(-ZONE_H / 2 + margin, Math.min(ZONE_H / 2 - margin, run.y + Math.sin(ang) * 12)),
+  }
+}
+
+function pulseBag(run: Run): void {
+  run.bagPulse = 0.45
+}
+
+/** Puts one carried item in the bag. A full bag leaves it on the ground next to the hamster. */
+function pocketUnit(run: Run, kind: ItemKind, unit: ItemUnit, id: string, ore?: string): void {
+  if (kind === 'sword') return
+  if (slotFree(run)) {
+    addUnits(run.bag, kind, [unit])
+    pulseBag(run)
+    float(run, t('loot.pocket', { name: pocketName(kind, ore) }))
+    return
+  }
+  const at = beside(run, run.drops.length)
+  run.drops.push({ id, kind, x: at.x, y: at.y, born: run.age, handsOff: true, unit })
+  float(run, t('hud.bagFull'))
+}
+
+function pocketSpear(run: Run, spear: Spear, id: string): void {
+  if (!slotFree(run)) {
+    const at = beside(run, run.drops.length)
+    run.drops.push({ id, kind: 'tombak', x: at.x, y: at.y, born: run.age, handsOff: true, spear })
+    float(run, t('hud.bagFull'))
+    return
+  }
+  run.found = [...(run.found ?? []), spear]
+  pulseBag(run)
+  float(run, t('loot.pocket', { name: t('item.tombak') }))
+}
+
+function pocketBlade(run: Run, blade: Blade, id: string): void {
+  if (!slotFree(run)) {
+    const at = beside(run, run.drops.length)
+    run.drops.push({ id, kind: 'sword', x: at.x, y: at.y, born: run.age, handsOff: true, blade })
+    float(run, t('hud.bagFull'))
+    return
+  }
+  run.foundBlades = [...(run.foundBlades ?? []), blade]
+  pulseBag(run)
+  float(run, t('loot.pocket', { name: bladeDisplay(blade.id, blade.name) }))
 }
 
 export const FIELD_PRICE = { bandage: 40, tonic: 32 } as const
@@ -2584,11 +2620,10 @@ export function fieldBuy(save: ExtractSave, kind: 'bandage' | 'tonic'): string {
   if (!vendor) return ''
   const price = FIELD_PRICE[kind]
   if (save.coins < price) return t('shop.poor')
-  if (carriedCount(run) >= bagSlotsOf(run.bagSlots)) return t('ore.full')
   save.coins -= price
-  addUnits(run.bag, kind, [{ rarity: 'biasa', coins: kind === 'bandage' ? 8 : 6, origin: 'loot' }])
+  pocketUnit(run, kind, { rarity: 'biasa', coins: kind === 'bandage' ? 8 : 6, origin: 'loot' }, `vendor-${kind}-${Math.floor(run.age * 1000)}`)
   vendor.state = 'spent'
-  return t('room.price', { name: t(kind === 'bandage' ? 'item.bandage' : 'item.tonic'), n: price })
+  return ''
 }
 
 const visibleFoes: Foe[] = []

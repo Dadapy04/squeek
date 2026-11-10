@@ -315,6 +315,8 @@ export const DICT = {
   'ore.break': { id: 'Urat hancur', en: 'The vein shatters' },
   'ore.noise': { id: 'Dentuman memanggil', en: 'The crash calls them' },
   'ore.full': { id: 'Tidak muat', en: 'No space left' },
+  'loot.pocket': { id: '+ {name} → Tas', en: '+ {name} → Bag' },
+  'loot.oreName': { id: 'Bijih {metal}', en: '{metal} ore' },
   'ore.big': { id: 'Urat emas besar', en: 'A great gold vein' },
   'room.ambush': { id: 'Penyergapan', en: 'Ambush' },
   'room.wave': { id: 'Gelombang lagi', en: 'Another wave' },

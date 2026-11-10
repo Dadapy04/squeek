@@ -421,6 +421,12 @@ button.danger { background: #6e2420; color: #fff6f2; border-color: #a14a42; }
 #stamFill { background: #d6c15a; }
 #hpText, #stamText, #bagText, #swordDaya, #misi { color: #f4f1e8; }
 #bagText, #swordDaya, #misi { background: #16130f; border: 2px solid #3a3228; border-radius: 8px; padding: 2px 6px; }
+#openBag.pulse, #bagText.pulse { animation: bag-pulse 0.45s ease-out; }
+@keyframes bag-pulse {
+  0% { filter: brightness(1); box-shadow: 0 0 0 0 #f2c04a; }
+  40% { filter: brightness(1.7); box-shadow: 0 0 0 4px #f2c04a; }
+  100% { filter: brightness(1); box-shadow: 0 0 0 0 rgba(242, 192, 74, 0); }
+}
 #misi { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 #gear { width: auto; min-width: 32px; height: 32px; border-radius: 999px; padding: 0 8px; margin-left: auto; background: #1c1814; color: #f0d7a4; white-space: nowrap; }
 #field { --map-w: 92px; --map-h: 112px; }

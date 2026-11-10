@@ -1264,6 +1264,9 @@ function paint(): void {
   putText('#stamText', t('hud.stam', { n: Math.ceil(run.stam), max: STAM_MAX }))
   putText('#zoneText', zoneLabel(run.zone))
   putText('#bagText', t('hud.bag', { n: carriedCount(run), max: bagLimit(run) }))
+  const bagLit = (run.bagPulse ?? 0) > 0
+  document.querySelector('#openBag')?.classList.toggle('pulse', bagLit)
+  document.querySelector('#bagText')?.classList.toggle('pulse', bagLit)
   putText('#swordDaya', run.spear ? `${t('hud.spear')} ${spearPower(run.spear)}` : run.blade ? `${run.blade.damage}` : swordReadout(run.swordLevel ?? 1))
   putText('#misi', t('hud.floor', { n: run.depth || 1 }))
   const cue = document.querySelector<HTMLElement>('#floorCue')

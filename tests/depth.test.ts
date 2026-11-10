@@ -6,7 +6,6 @@ import {
   BOSS_HP_MULT,
   CRAB_HP,
   bankRun,
-  claimLoot,
   depthMods,
   deploy,
   freshSave,
@@ -65,18 +64,9 @@ describe('depth, boss, and fresh maps', () => {
     expect(chest.spear?.perks.length).toBeGreaterThan(0)
     run.x = chest.x
     run.y = chest.y
-    const before = run.bag.length
     step(run, { ...still, interact: true }, 0.05)
     expect(run.opened).toContain(chest.id)
-    expect(run.drops.length).toBeGreaterThan(before)
-    expect(run.drops.every((drop) => (drop.hover ?? 0) >= 1.2)).toBe(true)
-    run.age = 10
-    const weapon = run.drops.find((drop) => drop.kind === 'tombak')!
-    expect(weapon.spear?.id).toBe(chest.spear?.id)
-    run.x = weapon.x
-    run.y = weapon.y
-    expect(claimLoot(run, weapon.id, 'local')).toBe('ok')
-    expect(run.found.some((spear) => spear.id === weapon.spear?.id)).toBe(true)
+    expect(run.found.some((spear) => spear.id === chest.spear?.id)).toBe(true)
     expect(run.spear).toBeNull()
     expect(strikeDamage(run)).toBe(24)
   })

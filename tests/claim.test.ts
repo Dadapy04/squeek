@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { setLocale } from '../src/extract/i18n.ts'
+import { setLocale, t } from '../src/extract/i18n.ts'
 
 setLocale('id')
 import { loadExtract } from '../src/extract/save.ts'
@@ -79,14 +79,14 @@ describe('manual loot claim', () => {
     expect(claimLoot(run, 'race', 'bara')).toBe('missing')
   })
 
-  it('spills every chest item into a hover and loads an old drop without hover fields', () => {
+  it('puts every chest item in the bag and loads an old drop without hover fields', () => {
     const run = runAt(CRATES[0]!.x, CRATES[0]!.y)
     run.zone = CRATES[0]!.zone
     step(run, { ...still, interact: true }, 0.05)
     expect(run.opened).toContain(CRATES[0]!.id)
-    expect(run.drops).toHaveLength(CRATES[0]!.loot.length)
-    expect(run.drops.every((drop) => (drop.hover ?? 0) >= 1.2)).toBe(true)
-    expect(run.bag).toHaveLength(0)
+    expect(run.drops).toHaveLength(0)
+    expect(bagCount(run.bag)).toBe(CRATES[0]!.loot.length)
+    expect(run.floats.some((item) => item.text === t('loot.pocket', { name: t('item.scrap') }))).toBe(true)
     const store = {
       get length() { return 1 },
       clear() {},

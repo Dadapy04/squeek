@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { setLocale } from '../src/extract/i18n.ts'
+import { setLocale, t } from '../src/extract/i18n.ts'
 
 setLocale('en')
 import { COIN_BAND } from '../src/extract/coins.ts'
@@ -51,6 +51,9 @@ describe('mining', () => {
     expect(unit?.rarity).toBe(vein.rarity)
     expect(unit?.coins).toBeGreaterThanOrEqual(COIN_BAND[vein.rarity].min)
     expect(unit?.coins).toBeLessThanOrEqual(COIN_BAND[vein.rarity].max)
+    const metal = t(`ore.${vein.ore}` as 'ore.copper')
+    expect(run.floats.some((item) => item.text === t('loot.pocket', { name: t('loot.oreName', { metal }) }))).toBe(true)
+    expect(run.bagPulse ?? 0).toBeGreaterThan(0)
     const blocked = run.chart!.veins[0]!
     blocked.hp = 1
     run.bag = Array.from({ length: 12 }, () => ({ kind: 'scrap' as const, n: 1, units: [{ coins: 4, rarity: 'biasa' as const, origin: 'loot' as const }] }))
@@ -63,8 +66,13 @@ describe('mining', () => {
     run.swing = 0
     step(run, { ...still, attack: true }, 0.05)
     for (let i = 0; i < 6; i += 1) step(run, still, 0.05)
-    expect(blocked!.hp).toBe(1)
+    expect(blocked!.hp).toBe(0)
     expect(count(run.bag, 'scrap')).toBe(12)
+    expect(count(run.bag, 'ore')).toBe(0)
+    const spilled = run.drops.find((drop) => drop.kind === 'ore')
+    expect(spilled).toBeTruthy()
+    expect(Math.hypot(spilled!.x - run.x, spilled!.y - run.y)).toBeLessThan(28)
+    expect(run.floats.some((item) => item.text === t('hud.bagFull'))).toBe(true)
   })
 
   it('pulls a nearby foe when the pick strikes', () => {

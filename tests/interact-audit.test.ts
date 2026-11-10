@@ -49,7 +49,8 @@ describe('interact audit', () => {
     const crate = put(wood.run, 'crate')
     press(wood.run)
     expect(crate.state).toBe('spent')
-    expect(wood.run.drops.length).toBeGreaterThan(0)
+    expect(wood.run.bag.some((stack) => stack.kind === 'scrap')).toBe(true)
+    expect(wood.run.drops).toHaveLength(0)
 
     const bar = runOf()
     const lever = put(bar.run, 'lever')
@@ -66,7 +67,8 @@ describe('interact audit', () => {
     press(locked.run)
     expect(chest.state).toBe('open')
     expect(locked.run.keys).toBe(0)
-    expect(locked.run.drops.length).toBeGreaterThan(0)
+    expect(locked.run.bag.some((stack) => stack.kind === 'scrap')).toBe(true)
+    expect(locked.run.drops).toHaveLength(0)
 
     const boom = runOf()
     const barrel = put(boom.run, 'barrel')
@@ -84,7 +86,9 @@ describe('interact audit', () => {
     const shop = runOf()
     const vendor = put(shop.run, 'vendor', { x: shop.run.x + 20, y: shop.run.y })
     shop.save.coins = 40
-    expect(fieldBuy(shop.save, 'bandage')).toContain('40')
+    expect(fieldBuy(shop.save, 'bandage')).toBe('')
+    expect(shop.run.bag.some((stack) => stack.kind === 'bandage')).toBe(true)
+    expect(shop.run.floats.some((item) => item.text === '+ Bandage → Bag')).toBe(true)
     expect(shop.save.coins).toBe(0)
     expect(vendor.state).toBe('spent')
 
