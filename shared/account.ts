@@ -2,7 +2,7 @@
  * Wallet-profile mutations. Same prices as the client shop.
  * Guest play does not use this module.
  */
-import { mintUnit, type ItemUnit } from '../src/extract/coins.ts'
+import { isCommonUnit, mintUnit, type ItemUnit } from '../src/extract/coins.ts'
 import { coinFits } from './loot-law.ts'
 import {
   FIELD_BANDAGE_CAP,
@@ -295,7 +295,7 @@ export function sellUnit(account: Account, kind: string, coins?: number, spearId
   }
   const stack = account.stash.find((item) => item.kind === kind)
   if (!stack?.units?.length) return { ok: false, reason: 'missing' }
-  const index = coins == null ? 0 : stack.units.findIndex((unit) => unit.coins === coins)
+  const index = stack.units.findIndex((unit) => coins == null ? stack.units!.length === 1 : Math.floor(unit.coins) === Math.floor(coins))
   if (index < 0) return { ok: false, reason: 'missing' }
   const [unit] = stack.units.splice(index, 1)
   stack.n = stack.units.length
@@ -310,8 +310,8 @@ export function sellCommon(account: Account): Ok<{ gained: number }> | Fail {
   let gained = 0
   for (const stack of [...account.stash]) {
     if (stack.kind === 'sword' || !stack.units) continue
-    const keep = stack.units.filter((unit) => unit.rarity !== 'biasa')
-    const sold = stack.units.filter((unit) => unit.rarity === 'biasa')
+    const keep = stack.units.filter((unit) => !isCommonUnit(unit))
+    const sold = stack.units.filter((unit) => isCommonUnit(unit))
     if (sold.length === 0) continue
     gained += sold.reduce((sum, unit) => sum + unit.coins, 0)
     stack.units = keep

@@ -14,7 +14,7 @@ import { drawMapSheet } from './map-sprites.ts'
 import { drawBoomStrip, drawFoeRoster } from './view.ts'
 import { drawMinimap, reveal } from './minimap.ts'
 import { loadExtract, writeExtract } from './save.ts'
-import { ITEM_NAME, RARITY_COLOR, RARITY_NAME, STASH_SLOTS, type CoinRarity, type ItemUnit } from './coins.ts'
+import { isCommonUnit, ITEM_NAME, RARITY_COLOR, RARITY_NAME, STASH_SLOTS, type CoinRarity, type ItemUnit } from './coins.ts'
 import { bladeDisplay, bossDisplay, depthPlan } from './depths.ts'
 import { currentLocale, onLocale, setLocale, t, type MsgKey } from './i18n.ts'
 import { armRun, deathNote, guestExtractNote, mountOnline, noteDeath, noteExtract, noteRunBoundary, offerSessionRestore, refreshOnline, takeRunEndPermit, takeRunSeed, walletAct, walletLive, walletSettled } from './online.ts'
@@ -435,20 +435,9 @@ document.querySelector('#tipSkip')?.addEventListener('click', () => {
 document.querySelector('#sellCommon')?.addEventListener('click', () => rememberTip('sell'))
 document.querySelector('#buyBandage')?.addEventListener('click', () => buyFromMerchant('bandage'))
 document.querySelector('#buyP3k')?.addEventListener('click', () => buyFromMerchant('p3k'))
-document.querySelector('#sellCommon')?.addEventListener('click', () => {
-  if (walletLive()) {
-    void walletAct('/v1/act/sell-common', {}).then((result) => {
-      const note = document.querySelector('#merchantNote')
-      if (note) note.textContent = result.ok && (result.gained ?? 0) > 0 ? t('merchant.sold', { n: result.gained ?? 0 }) : t('merchant.none')
-      if (result.ok && (result.gained ?? 0) > 0) { playCue('world.sell', mixPref()); popCoins(result.gained ?? 0); renderBase() }
-    })
-    return
-  }
-  const gained = sellCommon(save)
-  const note = document.querySelector('#merchantNote')
-  if (note) note.textContent = gained > 0 ? t('merchant.sold', { n: gained }) : t('merchant.none')
-  if (gained > 0) { playCue('world.sell', mixPref()); writeExtract(storage, save); popCoins(gained); renderBase() }
-})
+const sellCommonBtn = document.querySelector<HTMLButtonElement>('#sellCommon')
+if (sellCommonBtn) markStashPress(sellCommonBtn)
+pressButton(sellCommonBtn ?? document.createElement('button'), () => askSellCommon())
 function buyFromMerchant(kind: 'bandage' | 'p3k'): void {
   if (walletLive()) {
     void walletAct('/v1/act/buy', { kind }).then((result) => {
@@ -2073,10 +2062,7 @@ function stashDetail(): HTMLElement {
     const color = rarity ? RARITY_COLOR[rarity] : '#c4b8a4'
     const name = held.spear ? spearLabel(held.spear) : ITEM_NAME[held.kind]
     box.innerHTML = `<b>${name}</b><p class="insure-note">${t('stash.box')}</p><p style="color:${color}">${rarity ? RARITY_NAME[rarity] : ''} · ${coins} ${t('coin.word')}</p>`
-    const out = document.createElement('button')
-    out.type = 'button'
-    out.textContent = t('bag.uninsure')
-    out.addEventListener('click', () => {
+    const out = stashButton(t('bag.uninsure'), () => {
       const reason = uninsureStash(save)
       if (reason) box.append(noteLine(reason))
       else { stashFocus = null; writeExtract(storage, save); renderBase() }
@@ -2096,8 +2082,9 @@ function stashDetail(): HTMLElement {
     box.innerHTML = `<b>${bladeDisplay(save.blade.id, save.blade.name)}</b><p>${t('blade.power', { n: save.blade.damage })}</p>`
     const button = document.createElement('button')
     button.type = 'button'
-    button.className = 'primary'
+    button.className = 'primary stash-press'
     button.textContent = t('stash.unequip', { name: bladeDisplay(save.blade.id, save.blade.name), dmg: save.blade.damage })
+    markStashPress(button)
     pressButton(button, () => { void wearWeapon('sword') })
     box.append(actionsOf(button))
     return box
@@ -2108,21 +2095,31 @@ function stashDetail(): HTMLElement {
       box.textContent = t('stash.spearGone')
       return box
     }
+    if (saleMatches('tombak', spear.coins, spear.id)) {
+      saleConfirm(box, spearLabel(spear), 'tombak', spear.coins, spear.id, spear.rarity)
+      return box
+    }
     const worn = save.spear?.id === spear.id
     const color = RARITY_COLOR[spear.rarity]
     box.innerHTML = `<b>${spearLabel(spear)}</b><p style="color:${color}">${RARITY_NAME[spear.rarity]} · ${spear.coins ?? 0} ${t('coin.word')}</p><p>${spearStatLine(spear)}</p>`
     const button = document.createElement('button')
     button.type = 'button'
-    button.className = 'primary'
+    button.className = 'primary stash-press'
     button.textContent = worn ? t('stash.unequipSpear') : t('stash.equip')
+    markStashPress(button)
     pressButton(button, () => { void wearWeapon(worn ? 'sword' : 'spear', worn ? undefined : spear.id) })
     const actions = actionsOf(button)
-    if (!worn) actions.append(sellButtons(box, 'tombak', spear.coins, spear.id, spear.rarity), insureStashButton('tombak', spear.coins, spear.id))
+    if (!worn) actions.append(sellButtons('tombak', spear.coins, spear.id, spear.rarity), insureStashButton('tombak', spear.coins, spear.id))
     box.append(actions)
+    paintSaleError(box)
     return box
   }
   const name = ITEM_NAME[focus.kind]
   const unit = save.stash.find((stack) => stack.kind === focus.kind)?.units?.find((item) => focus.coins == null || item.coins === focus.coins)
+  if (unit && saleMatches(focus.kind, unit.coins)) {
+    saleConfirm(box, name, focus.kind, unit.coins, undefined, unit.rarity)
+    return box
+  }
   const color = unit ? RARITY_COLOR[unit.rarity] : '#c4b8a4'
   const priced = unit && focus.kind !== 'sword'
   const price = priced && unit ? `<p style="color:${color}">${RARITY_NAME[unit.rarity]} · ${unit.coins} ${t('coin.word')}</p>` : ''
@@ -2132,22 +2129,26 @@ function stashDetail(): HTMLElement {
   if (focus.kind === 'sword') {
     const button = document.createElement('button')
     button.type = 'button'
-    button.className = 'primary'
+    button.className = 'primary stash-press'
     button.textContent = save.spear || save.blade ? t('stash.equip') : (count(picks, 'sword') > 0 ? t('stash.worn') : t('stash.equip'))
     if (!(save.spear || save.blade) && count(picks, 'sword') > 0) button.disabled = true
+    markStashPress(button)
     pressButton(button, () => { void wearWeapon('sword') })
     actions.append(button)
   } else if (count(save.stash, focus.kind) - count(picks, focus.kind) > 0) {
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.className = 'primary'
-    button.textContent = t('stash.take')
-    pressButton(button, () => { takePick(focus.kind); renderBase() })
+    const button = stashButton(t('stash.take'), () => { takePick(focus.kind); renderBase() }, true)
     actions.append(button)
   }
-  if (focus.kind !== 'sword' && unit) actions.append(sellButtons(box, focus.kind, unit.coins, undefined, unit.rarity), insureStashButton(focus.kind, unit.coins))
+  if (focus.kind !== 'sword' && unit) actions.append(sellButtons(focus.kind, unit.coins, undefined, unit.rarity), insureStashButton(focus.kind, unit.coins))
   if (actions.childElementCount > 0) box.append(actions)
+  paintSaleError(box)
   return box
+}
+
+function paintSaleError(box: HTMLElement): void {
+  if (!saleError) return
+  box.append(noteLine(saleError))
+  saleError = null
 }
 
 function actionsOf(button: HTMLButtonElement): HTMLElement {
@@ -2164,12 +2165,94 @@ function noteLine(text: string): HTMLElement {
   return p
 }
 
-function insureStashButton(kind: ItemKind, coins?: number, spearId?: string): HTMLButtonElement {
+function markStashPress(button: HTMLButtonElement): void {
+  button.classList.add('stash-press')
+  button.addEventListener('pointerdown', () => {
+    button.classList.add('pressed')
+    window.setTimeout(() => button.classList.remove('pressed'), 120)
+  })
+}
+
+function stashButton(label: string, onPress: () => void, primary = false): HTMLButtonElement {
   const button = document.createElement('button')
   button.type = 'button'
-  button.id = 'stashInsure'
-  button.textContent = t('bag.insure')
-  button.addEventListener('click', () => {
+  button.className = primary ? 'primary stash-press' : 'stash-press'
+  button.textContent = label
+  markStashPress(button)
+  pressButton(button, onPress)
+  return button
+}
+
+function commonStock(): { n: number; coins: number } {
+  let n = 0
+  let coins = 0
+  for (const stack of save.stash) {
+    if (stack.kind === 'sword' || !stack.units) continue
+    for (const unit of stack.units) {
+      if (!isCommonUnit(unit)) continue
+      n += 1
+      coins += unit.coins
+    }
+  }
+  return { n, coins }
+}
+
+let commonAsk: HTMLElement | null = null
+
+function clearCommonAsk(): void {
+  commonAsk?.remove()
+  commonAsk = null
+}
+
+function askSellCommon(): void {
+  rememberTip('sell')
+  const offer = commonStock()
+  const note = document.querySelector('#merchantNote')
+  if (offer.n === 0) {
+    clearCommonAsk()
+    if (note) note.textContent = t('merchant.none')
+    return
+  }
+  if (note) note.textContent = t('merchant.sellAsk', { n: offer.n, coins: offer.coins })
+  clearCommonAsk()
+  const row = document.createElement('div')
+  row.className = 'row'
+  const yes = stashButton(t('stash.sellYes'), () => { void commitCommon() }, true)
+  const no = stashButton(t('shop.no'), () => {
+    clearCommonAsk()
+    if (note) note.textContent = ''
+  })
+  row.append(yes, no)
+  note?.insertAdjacentElement('afterend', row)
+  commonAsk = row
+}
+
+async function commitCommon(): Promise<void> {
+  if (saleBusy) return
+  saleBusy = true
+  const note = document.querySelector('#merchantNote')
+  if (walletLive()) {
+    const result = await walletAct('/v1/act/sell-common', {})
+    saleBusy = false
+    clearCommonAsk()
+    if (!result.ok) {
+      if (note) note.textContent = saleReason(result.reason)
+      return
+    }
+    const gained = result.gained ?? 0
+    if (note) note.textContent = gained > 0 ? t('merchant.sold', { n: gained }) : t('merchant.none')
+    if (gained > 0) { playCue('world.sell', mixPref()); popCoins(gained); renderBase() }
+    return
+  }
+  const gained = sellCommon(save)
+  saleBusy = false
+  clearCommonAsk()
+  if (note) note.textContent = gained > 0 ? t('merchant.sold', { n: gained }) : t('merchant.none')
+  if (gained > 0) { playCue('world.sell', mixPref()); writeExtract(storage, save); popCoins(gained); renderBase() }
+}
+
+function insureStashButton(kind: ItemKind, coins?: number, spearId?: string): HTMLButtonElement {
+  const button = stashButton(t('bag.insure'), () => {
     const reason = insureStash(save, kind, coins, spearId)
     if (reason) {
       document.querySelector('.inv-detail')?.append(noteLine(reason))
@@ -2179,56 +2262,84 @@ function insureStashButton(kind: ItemKind, coins?: number, spearId?: string): HT
     stashFocus = { kind, coins, spearId, box: true }
     renderBase()
   })
+  button.id = 'stashInsure'
   return button
 }
 
-let sellReady = false
-function sellButtons(box: HTMLElement, kind: ItemKind, coins?: number, spearId?: string, rarity?: CoinRarity): HTMLElement {
+let saleAsk: { kind: ItemKind; coins?: number; spearId?: string; rarity?: CoinRarity } | null = null
+let saleError: string | null = null
+let saleBusy = false
+
+function saleMatches(kind: ItemKind, coins?: number, spearId?: string): boolean {
+  return !!saleAsk && saleAsk.kind === kind && saleAsk.coins === coins && saleAsk.spearId === spearId
+}
+
+function sellButtons(kind: ItemKind, coins?: number, spearId?: string, rarity?: CoinRarity): HTMLElement {
   const wrap = document.createElement('div')
   wrap.className = 'sell-row'
-  const jual = document.createElement('button')
-  jual.type = 'button'
-  jual.id = 'sellItem'
-  jual.textContent = t('stash.sell')
-  jual.addEventListener('click', () => {
-    if (needsSellConfirm(rarity) && !sellReady) {
-      sellReady = true
-      const ask = document.createElement('p')
-      ask.id = 'sellAsk'
-      ask.textContent = t('stash.sellAsk', { name: ITEM_NAME[kind], rarity: rarity ? RARITY_NAME[rarity] : '', coins: coins ?? 0 })
-      const yes = document.createElement('button')
-      yes.type = 'button'
-      yes.id = 'sellYes'
-      yes.className = 'primary'
-      yes.textContent = t('stash.sellYes')
-      yes.addEventListener('click', () => { commitSale(kind, coins, spearId) })
-      const no = document.createElement('button')
-      no.type = 'button'
-      no.textContent = t('shop.no')
-      no.addEventListener('click', () => { sellReady = false; renderBase() })
-      box.append(ask, yes, no)
+  const jual = stashButton(t('stash.sell'), () => {
+    if (!needsSellConfirm(rarity)) {
+      void commitSale(kind, coins, spearId)
       return
     }
-    commitSale(kind, coins, spearId)
+    saleAsk = { kind, coins, spearId, rarity }
+    saleError = null
+    renderBase()
   })
+  jual.id = 'sellItem'
   wrap.append(jual)
   return wrap
 }
 
-function commitSale(kind: ItemKind, coins?: number, spearId?: string): void {
+function saleConfirm(box: HTMLElement, title: string, kind: ItemKind, coins?: number, spearId?: string, rarity?: CoinRarity): void {
+  const name = kind === 'tombak' ? title : ITEM_NAME[kind]
+  box.innerHTML = `<b>${name}</b>`
+  const ask = document.createElement('p')
+  ask.id = 'sellAsk'
+  ask.textContent = t('stash.sellAsk', { name, rarity: rarity ? RARITY_NAME[rarity] : '', coins: coins ?? 0 })
+  const yes = stashButton(t('stash.sellYes'), () => { void commitSale(kind, coins, spearId) }, true)
+  yes.id = 'sellYes'
+  const no = stashButton(t('shop.no'), () => { saleAsk = null; saleError = null; renderBase() })
+  if (saleBusy) { yes.disabled = true; no.disabled = true }
+  const actions = actionsOf(yes)
+  actions.append(no)
+  box.append(ask, actions)
+  if (saleError) box.append(noteLine(saleError))
+}
+
+function saleReason(reason?: string): string {
+  if (reason === 'missing') return t('err.notInStash')
+  if (reason === 'run-live') return t('err.runShop')
+  if (reason === 'rate') return t('online.why.net')
+  return t('online.offline')
+}
+
+async function commitSale(kind: ItemKind, coins?: number, spearId?: string): Promise<void> {
+  if (saleBusy) return
+  saleBusy = true
+  saleError = null
   if (walletLive()) {
-    void walletAct('/v1/act/sell', { kind, coins, spearId }).then((result) => {
-      sellReady = false
-      if (!result.ok) return
-      stashFocus = null
-      popCoins(result.gained ?? 0)
+    const result = await walletAct('/v1/act/sell', { kind, coins, spearId })
+    saleBusy = false
+    saleAsk = null
+    if (!result.ok) {
+      saleError = saleReason(result.reason)
       renderBase()
-    })
+      return
+    }
+    stashFocus = null
+    popCoins(result.gained ?? 0)
+    renderBase()
     return
   }
   const gained = sellOne(save, kind, coins, spearId)
-  sellReady = false
-  if (gained == null) return
+  saleBusy = false
+  saleAsk = null
+  if (gained == null) {
+    saleError = t('err.notInStash')
+    renderBase()
+    return
+  }
   stashFocus = null
   writeExtract(storage, save)
   popCoins(gained)

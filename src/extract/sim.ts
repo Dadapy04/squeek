@@ -1,4 +1,4 @@
-import { coinsFor, hashText, mintUnit, mixSeed, readUnit, type CoinRarity, type ItemOrigin, type ItemUnit } from './coins.ts'
+import { coinsFor, hashText, isCommonUnit, mintUnit, mixSeed, readUnit, type CoinRarity, type ItemOrigin, type ItemUnit } from './coins.ts'
 import { bossLootRarity } from '../../shared/loot-law.ts'
 import { currentLocale, t, type MsgKey } from './i18n.ts'
 import { BOSS_RAGE_SEC, DEPTH_CAP, DEPTHS, bladeDisplay, bossChip, bossDisplay, bossPattern, bossPhaseOf, depthPlan, foeChip, frontGuarded, GUARD_FACTOR, makeBlade, rageMul, recommendDamage, type Blade, type Breed } from './depths.ts'
@@ -588,7 +588,7 @@ export function sellOne(save: ExtractSave, kind: ItemKind, coins?: number, spear
   }
   const stack = save.stash.find((item) => item.kind === kind)
   if (!stack?.units?.length) return null
-  const index = coins == null ? 0 : stack.units.findIndex((unit) => unit.coins === coins)
+  const index = stack.units.findIndex((unit) => coins == null ? stack.units!.length === 1 : Math.floor(unit.coins) === Math.floor(coins))
   if (index < 0) return null
   const [unit] = stack.units.splice(index, 1)
   stack.n = stack.units.length
@@ -602,8 +602,8 @@ export function sellCommon(save: ExtractSave): number {
   let gained = 0
   for (const stack of [...save.stash]) {
     if (stack.kind === 'sword' || !stack.units) continue
-    const keep = stack.units.filter((unit) => unit.rarity !== 'biasa')
-    const sold = stack.units.filter((unit) => unit.rarity === 'biasa')
+    const keep = stack.units.filter((unit) => !isCommonUnit(unit))
+    const sold = stack.units.filter((unit) => isCommonUnit(unit))
     if (sold.length === 0) continue
     gained += sold.reduce((sum, unit) => sum + unit.coins, 0)
     stack.units = keep

@@ -29,6 +29,7 @@ export const DICT = {
   'merchant.bought': { id: '{name} masuk simpanan.', en: '{name} added to the stash.' },
   'merchant.sold': { id: 'Biasa terjual +{n} koin.', en: 'Common goods sold +{n} coins.' },
   'merchant.none': { id: 'Tidak ada barang biasa.', en: 'No common goods to sell.' },
+  'merchant.sellAsk': { id: 'Jual {n} barang biasa seharga {coins} koin?', en: 'Sell {n} common items for {coins} coins?' },
   'btn.workshop': { id: 'Bengkel', en: 'Workshop' },
   'btn.deploy': { id: 'Berangkat', en: 'Head out' },
   'btn.resume': { id: 'Lanjutkan galian', en: 'Resume delve' },

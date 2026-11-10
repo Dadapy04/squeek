@@ -94,5 +94,5 @@ export function nextBagUpgrade(slots: number | undefined): { slots: number; cost
 }
 
 export function needsSellConfirm(rarity: CoinRarity | undefined): boolean {
-  return rarity === 'pusaka' || rarity === 'legenda'
+  return rarity == null || rarity === 'biasa' || rarity === 'langka' || rarity === 'pusaka' || rarity === 'legenda'
 }

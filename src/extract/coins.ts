@@ -69,6 +69,13 @@ export function coinsFor(rarity: CoinRarity, seed: number): number {
   return band.min + (mixSeed(seed) % span)
 }
 
+/** A unit counts as common when it is tagged biasa, or when it has no tag and its coins sit in the common band. */
+export function isCommonUnit(unit: { rarity?: string; coins?: number }): boolean {
+  if (unit.rarity === 'biasa') return true
+  if (unit.rarity === 'langka' || unit.rarity === 'pusaka' || unit.rarity === 'legenda') return false
+  return (unit.coins ?? 0) < COIN_BAND.langka.min
+}
+
 export function rarityForKind(kind: ItemKind, seed: number): CoinRarity {
   const table = MINT_RARITIES[kind]
   return table[mixSeed(seed) % table.length]!

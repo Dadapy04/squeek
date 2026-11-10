@@ -873,6 +873,22 @@ button.danger { background: #6e2420; color: #fff6f2; border-color: #a14a42; }
 .inv-detail { min-width: 0; padding: 6px; background: #120f0c; border: 2px solid #3a2c20; border-radius: 8px; font-size: 12px; line-height: 1.35; }
 .inv-detail p, .inv-detail b { margin: 0 0 4px; overflow-wrap: anywhere; }
 .inv-detail button { width: 100%; margin-top: 4px; }
+.sell-row { display: contents; }
+button.stash-press:active,
+button.stash-press.pressed {
+  transform: translateY(2px);
+  box-shadow: inset 0 2px 0 #0c0a08, inset 0 0 0 2px #14110e;
+  filter: brightness(0.78);
+}
+button.stash-press.pressed { animation: stash-flash 120ms linear; }
+@keyframes stash-flash {
+  0% { filter: brightness(1.45); }
+  100% { filter: brightness(0.78); }
+}
+button.stash-press:disabled {
+  filter: grayscale(0.35) brightness(0.72);
+  transform: none;
+}
 .loot b, .loot span { overflow: hidden; text-overflow: ellipsis; }
 @media (orientation: landscape) and (max-height: 520px) {
   #loadout { display: block; }
