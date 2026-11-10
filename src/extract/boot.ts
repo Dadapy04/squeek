@@ -528,13 +528,16 @@ type InvGroup = { kind: ItemKind; name: string; rarity?: CoinRarity; coins: numb
 function invHead(total: string, cap: string): HTMLElement {
   const head = document.createElement('div')
   head.className = 'inv-head'
-  const value = document.createElement('p')
-  value.className = 'inv-total'
-  value.textContent = total
+  if (total) {
+    const value = document.createElement('p')
+    value.className = 'inv-total'
+    value.textContent = total
+    head.append(value)
+  }
   const slots = document.createElement('p')
   slots.className = 'inv-cap'
   slots.textContent = cap
-  head.append(value, slots)
+  head.append(slots)
   return head
 }
 
@@ -1488,12 +1491,11 @@ function paintResult(kind: 'extracted' | 'dead', carried: ResultRow[], gained: n
     empty.append(name)
     loot.append(empty)
   }
-  carried.forEach((row, index) => {
+  carried.forEach((row) => {
     const item = document.createElement('li')
     item.className = `loot${row.brought ? '' : ' precious'}${kind === 'dead' ? ' lost' : ''}`
     item.dataset.kind = row.kind
     if (row.rarity) item.dataset.rarity = row.rarity
-    item.style.animationDelay = `${index * 70}ms`
     const name = document.createElement('b')
     name.textContent = rowName(row)
     if (row.rarity) name.style.color = RARITY_COLOR[row.rarity]
@@ -1965,7 +1967,7 @@ function renderBase(): void {
   const held = stashGroups()
   const panel = document.createElement('div')
   panel.className = 'inv'
-  panel.append(invHead(t('stash.value', { n: total }), t('stash.count', { n: stashUsed(save), max: STASH_SLOTS })))
+  panel.append(invHead('', t('stash.count', { n: stashUsed(save), max: STASH_SLOTS })))
   const lead = document.createElement('div')
   lead.className = 'loadout-lead'
   const heading = document.createElement('h2')
