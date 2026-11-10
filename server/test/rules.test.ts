@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { judgeRun } from '../src/rules.ts'
 
+function itemFor(coin: number): string {
+  if (coin >= 60) return 'bilah'
+  if (coin >= 36) return 'relic'
+  if (coin >= 18) return 'shard'
+  return 'scrap'
+}
+
 function claim(depth: number, coins: number[], elapsedMs: number) {
   return {
     depth,
@@ -8,7 +15,7 @@ function claim(depth: number, coins: number[], elapsedMs: number) {
     elapsedMs,
     events: [
       ...Array.from({ length: depth }, (_, index) => ({ kind: 'depth', depth: index + 1 })),
-      ...coins.map((coin) => ({ kind: 'loot', coins: coin })),
+      ...coins.map((coin) => ({ kind: 'loot', item: itemFor(coin), coins: coin })),
       { kind: 'extract', depth },
     ],
   }

@@ -1,30 +1,14 @@
 import { apiUrl, onlineEnabled, phoneLayout, walletButtons, walletConnectId } from './online-flag.ts'
 import type { RunReport } from './run-report.ts'
-import { EXTRACT_SAVE_KEY, loadExtract, onSaveWrote } from './save.ts'
-import { decideSync, hasLocalProgress, recommendSide, type ProgressSide } from './sync-choice.ts'
+import { EXTRACT_SAVE_KEY, loadExtract, setPersistSuspended } from './save.ts'
 import { t } from './i18n.ts'
-import { stashValue, type ExtractSave } from './sim.ts'
+import type { ExtractSave } from './sim.ts'
 
 const SESSION_KEY = 'npcs-burrow-pixel-extract.session.v1'
-const CLOUD_KEY = 'npcs-burrow-pixel-extract.cloud.v1'
-
 interface Session {
   token: string
   address: string
   name: string | null
-}
-
-interface CloudMeta {
-  address: string
-  revision: number | null
-  dirty: boolean
-  hold?: boolean
-}
-
-interface RemoteSave {
-  revision: number
-  updatedAt: number
-  blob: string
 }
 
 interface Hooks {
@@ -34,9 +18,7 @@ interface Hooks {
 }
 
 let hooks: Hooks | null = null
-let applying = false
-let syncing = false
-let pending: RemoteSave | null = null
+let guestBlob: string | null = null
 let runToken: string | null = null
 
 function readSession(storage: Storage | null): Session | null {
@@ -56,21 +38,8 @@ function writeSession(storage: Storage | null, session: Session | null): void {
   else storage.setItem(SESSION_KEY, JSON.stringify(session))
 }
 
-function readMeta(storage: Storage | null): CloudMeta | null {
-  if (!storage) return null
-  try {
-    const parsed = JSON.parse(storage.getItem(CLOUD_KEY) ?? '') as CloudMeta
-    if (!parsed?.address) return null
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-function writeMeta(storage: Storage | null, meta: CloudMeta | null): void {
-  if (!storage) return
-  if (!meta) storage.removeItem(CLOUD_KEY)
-  else storage.setItem(CLOUD_KEY, JSON.stringify(meta))
+export function walletLive(): boolean {
+  return guestBlob != null && hooks != null && readSession(hooks.storage) != null
 }
 
 function shortAddress(address: string): string {
@@ -82,47 +51,20 @@ function setText(id: string, text: string): void {
   if (el) el.textContent = text
 }
 
-function sideOf(save: ExtractSave, updatedAt: number): ProgressSide {
-  return { coins: save.coins || 0, stash: stashValue(save), depth: save.depth || 1, ventures: save.ventures || 0, updatedAt }
-}
-
-function showConflict(on: boolean): void {
-  for (const id of ['cloudKeep', 'cloudUse', 'cloudSafe', 'cloudLocal', 'cloudRemote', 'cloudAdvice']) {
-    const el = document.getElementById(id)
-    if (el) el.hidden = !on
-  }
-  if (!on || !hooks || !pending) return
-  const local = sideOf(hooks.getSave(), Date.now())
-  const remoteSave = saveFromBlob(pending.blob)
-  const remote = sideOf(remoteSave, pending.updatedAt)
-  const pick = recommendSide(local, remote)
-  setText('cloudSafe', t('online.safe'))
-  setText('cloudLocal', t('online.sideLocal', { coins: local.coins, stash: local.stash, depth: local.depth }))
-  setText('cloudRemote', t('online.sideCloud', { coins: remote.coins, stash: remote.stash, depth: remote.depth }))
-  setText('cloudAdvice', pick === 'local' ? t('online.adviseLocal') : t('online.adviseCloud'))
-  document.getElementById('cloudKeep')?.classList.toggle('primary', pick === 'local')
-  document.getElementById('cloudUse')?.classList.toggle('primary', pick === 'cloud')
-}
-
 export function refreshOnline(): void {
   if (!onlineEnabled() || !hooks) return
   const session = readSession(hooks.storage)
-  const meta = readMeta(hooks.storage)
   if (!session) {
     setText('onlineStatus', t('online.guest'))
     setText('onlineStatusRun', t('online.guest'))
     setText('cloudStatus', t('online.device'))
-    showConflict(false)
     paintWalletChrome()
     return
   }
   const label = session.name || shortAddress(session.address)
   setText('onlineStatus', t('online.who', { name: label }))
   setText('onlineStatusRun', t('online.who', { name: label }))
-  if (pending) setText('cloudStatus', t('online.newer'))
-  else if (meta?.dirty) setText('cloudStatus', t('online.device'))
-  else setText('cloudStatus', t('online.synced'))
-  showConflict(pending != null)
+  setText('cloudStatus', walletLive() ? t('online.synced') : t('online.device'))
   paintWalletChrome()
 }
 
@@ -132,10 +74,6 @@ async function api(path: string, init: RequestInit = {}, auth = true): Promise<R
   const session = hooks ? readSession(hooks.storage) : null
   if (auth && session) headers.set('authorization', `Bearer ${session.token}`)
   return fetch(`${apiUrl()}${path}`, { ...init, headers })
-}
-
-function blobOf(save: ExtractSave): string {
-  return JSON.stringify(save)
 }
 
 function saveFromBlob(blob: string): ExtractSave {
@@ -149,84 +87,6 @@ function saveFromBlob(blob: string): ExtractSave {
     setItem: (key, value) => { box.set(key, value) },
   }
   return loadExtract(storage)
-}
-
-async function upload(forceRevision?: number): Promise<void> {
-  if (!hooks) return
-  const session = readSession(hooks.storage)
-  if (!session) return
-  const meta = readMeta(hooks.storage)
-  const revision = forceRevision ?? meta?.revision ?? null
-  let response: Response
-  try {
-    response = await api('/v1/save', { method: 'PUT', body: JSON.stringify({ revision, blob: blobOf(hooks.getSave()) }) })
-  } catch {
-    setText('cloudStatus', t('online.offline'))
-    return
-  }
-  if (response.status === 409) {
-    const body = await response.json() as RemoteSave
-    if (body.blob && body.blob === blobOf(hooks.getSave())) {
-      pending = null
-      writeMeta(hooks.storage, { address: session.address, revision: body.revision, dirty: false, hold: false })
-      refreshOnline()
-      return
-    }
-    pending = body
-    writeMeta(hooks.storage, { address: session.address, revision: body.revision, dirty: true, hold: true })
-    refreshOnline()
-    return
-  }
-  if (!response.ok) return
-  const body = await response.json() as { revision: number }
-  pending = null
-  writeMeta(hooks.storage, { address: session.address, revision: body.revision, dirty: false })
-  refreshOnline()
-}
-
-async function reconcile(): Promise<void> {
-  if (!hooks) return
-  const session = readSession(hooks.storage)
-  if (!session) return
-  syncing = true
-  try {
-    let response: Response
-    try {
-      response = await api('/v1/save')
-    } catch {
-      setText('cloudStatus', t('online.offline'))
-      return
-    }
-    if (!response.ok) return
-    const body = await response.json() as { empty?: boolean; revision?: number; updatedAt?: number; blob?: string }
-    const remote = body.empty || body.revision == null || body.blob == null ? null : { revision: body.revision, updatedAt: body.updatedAt ?? 0, blob: body.blob }
-    const meta = readMeta(hooks.storage)
-    const localMeta = meta && meta.address === session.address ? meta : { address: session.address, revision: null, dirty: hasLocalProgress(hooks.getSave()), hold: false }
-    const choice = decideSync(
-      { dirty: localMeta.dirty, revision: localMeta.revision, progress: hasLocalProgress(hooks.getSave()), hold: localMeta.hold === true },
-      remote ? { revision: remote.revision } : null,
-    )
-    if (choice === 'upload') {
-      writeMeta(hooks.storage, { ...localMeta, hold: false })
-      await upload(remote ? remote.revision : 0)
-      return
-    }
-    if (choice === 'download' && remote) {
-      applying = true
-      try { hooks.setSave(saveFromBlob(remote.blob)) } finally { applying = false }
-      writeMeta(hooks.storage, { address: session.address, revision: remote.revision, dirty: false, hold: false })
-      pending = null
-      refreshOnline()
-      return
-    }
-    if (choice === 'ask' && remote) {
-      pending = remote
-      writeMeta(hooks.storage, { address: session.address, revision: remote.revision, dirty: true, hold: true })
-      refreshOnline()
-    }
-  } finally {
-    syncing = false
-  }
 }
 
 interface Eip1193 {
@@ -287,9 +147,25 @@ async function signIn(provider: Eip1193): Promise<void> {
   if (!verified.ok) return
   const session = await verified.json() as Session
   writeSession(hooks.storage, session)
+  const account = await api('/v1/account')
+  if (account.status === 404 || account.status === 410) {
+    writeSession(hooks.storage, null)
+    setText('cloudStatus', t('online.updating'))
+    refreshOnline()
+    return
+  }
+  if (!account.ok) {
+    writeSession(hooks.storage, null)
+    setText('cloudStatus', t('online.offline'))
+    refreshOnline()
+    return
+  }
+  const body = await account.json() as { state: unknown }
+  guestBlob = hooks.storage?.getItem(EXTRACT_SAVE_KEY) ?? ''
+  setPersistSuspended(true)
+  hooks.setSave(saveFromBlob(JSON.stringify(body.state)))
   const name = document.getElementById('walletName') as HTMLInputElement | null
   if (name) name.value = session.name ?? ''
-  await reconcile()
   refreshOnline()
 }
 
@@ -339,9 +215,12 @@ async function connectWalletConnect(): Promise<void> {
 async function disconnect(): Promise<void> {
   if (!hooks) return
   try { await api('/v1/auth/logout', { method: 'POST' }) } catch { /* local sign-out still happens */ }
-  writeSession(hooks.storage, null)
-  pending = null
+  const kept = guestBlob
+  guestBlob = null
   runToken = null
+  setPersistSuspended(false)
+  writeSession(hooks.storage, null)
+  if (kept != null) hooks.setSave(saveFromBlob(kept || '{}'))
   refreshOnline()
 }
 
@@ -394,13 +273,15 @@ function markBoard(id: string, group: string): void {
 }
 
 /** Ask for a seed. The token is not armed until the local run actually starts. */
-export async function takeRunSeed(): Promise<{ seed: number; token: string } | undefined> {
+export async function takeRunSeed(picks: { kind: string; n: number }[] = [], bringShield = false): Promise<{ seed: number; token: string; state?: unknown; carried?: unknown; error?: string } | undefined> {
   if (!onlineEnabled() || !hooks || !readSession(hooks.storage)) return undefined
   try {
-    const response = await api('/v1/runs/start', { method: 'POST', body: '{}' })
-    if (!response.ok) return undefined
-    const body = await response.json() as { seed: number; token: string }
-    return { seed: body.seed, token: body.token }
+    const response = await api('/v1/runs/start', { method: 'POST', body: JSON.stringify({ picks, bringShield }) })
+    const body = await response.json().catch(() => ({})) as { seed?: number; token?: string; error?: string; state?: { activeRun?: unknown } }
+    if (!response.ok || !body.token || body.seed == null) return { seed: 0, token: '', error: body.error ?? 'offline' }
+    const carried = body.state?.activeRun
+    if (body.state && walletLive()) hooks.setSave(saveFromBlob(JSON.stringify({ ...body.state, activeRun: null })))
+    return { seed: body.seed, token: body.token, state: body.state, carried }
   } catch {
     return undefined
   }
@@ -424,34 +305,59 @@ function rejectText(body: { reason?: string; depth?: number; elapsedMs?: number 
   return t('online.rejected')
 }
 
-export async function noteExtract(report: RunReport): Promise<void> {
-  if (!runToken || !hooks || !readSession(hooks.storage)) return
+export async function noteExtract(report: RunReport): Promise<boolean> {
+  if (!runToken || !hooks || !readSession(hooks.storage)) return false
   const token = runToken
-  runToken = null
   try {
     const response = await api('/v1/runs/extract', { method: 'POST', body: JSON.stringify({ token, ...report }) })
+    const body = await response.json().catch(() => ({})) as { reason?: string; depth?: number; elapsedMs?: number; ranked?: boolean; state?: unknown }
+    if (body.state) hooks.setSave(saveFromBlob(JSON.stringify(body.state)))
     if (!response.ok) {
-      const body = await response.json().catch(() => ({})) as { reason?: string; depth?: number; elapsedMs?: number }
       setText('cloudStatus', rejectText(body))
-      return
+      return false
     }
-    const body = await response.json() as { ranked?: boolean }
+    runToken = null
     if (body.ranked === false) setText('cloudStatus', t('online.flagged'))
+    else setText('cloudStatus', t('online.synced'))
+    return true
   } catch {
     setText('cloudStatus', t('online.offline'))
+    return false
+  }
+}
+
+export async function noteDeath(depth: number): Promise<boolean> {
+  if (!runToken || !hooks || !readSession(hooks.storage)) return false
+  const token = runToken
+  try {
+    const response = await api('/v1/runs/die', { method: 'POST', body: JSON.stringify({ token, depth }) })
+    const body = await response.json().catch(() => ({})) as { state?: unknown }
+    if (body.state) hooks.setSave(saveFromBlob(JSON.stringify(body.state)))
+    if (!response.ok) return false
+    runToken = null
+    return true
+  } catch {
+    setText('cloudStatus', t('online.offline'))
+    return false
+  }
+}
+
+export async function walletAct(path: string, body: unknown, apply = true): Promise<{ ok: boolean; reason?: string; gained?: number }> {
+  if (!hooks || !walletLive()) return { ok: false, reason: 'offline' }
+  try {
+    const response = await api(path, { method: 'POST', body: JSON.stringify(body ?? {}) })
+    const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string; state?: unknown; gained?: number }
+    if (apply && payload.state) hooks.setSave(saveFromBlob(JSON.stringify(payload.state)))
+    if (!response.ok || payload.ok === false) return { ok: false, reason: payload.error }
+    return { ok: true, gained: payload.gained }
+  } catch {
+    setText('cloudStatus', t('online.offline'))
+    return { ok: false, reason: 'offline' }
   }
 }
 
 export function mountOnline(next: Hooks): void {
   hooks = next
-  onSaveWrote(() => {
-    if (applying || syncing || pending || !onlineEnabled()) return
-    const session = hooks ? readSession(hooks.storage) : null
-    if (!session || !hooks) return
-    const meta = readMeta(hooks.storage) ?? { address: session.address, revision: null, dirty: false }
-    writeMeta(hooks.storage, { ...meta, address: session.address, dirty: true })
-    void upload()
-  })
   if (!onlineEnabled()) return
   const box = document.getElementById('onlineBox')
   if (box) box.hidden = false
@@ -461,22 +367,6 @@ export function mountOnline(next: Hooks): void {
   document.getElementById('walletWc')?.addEventListener('click', () => { void connectWalletConnect() })
   document.getElementById('walletOut')?.addEventListener('click', () => { void disconnect() })
   document.getElementById('walletNameSave')?.addEventListener('click', () => { void saveName() })
-  document.getElementById('cloudKeep')?.addEventListener('click', () => {
-    if (!pending) return
-    const revision = pending.revision
-    pending = null
-    void upload(revision)
-  })
-  document.getElementById('cloudUse')?.addEventListener('click', () => {
-    if (!hooks || !pending) return
-    const remote = pending
-    const session = readSession(hooks.storage)
-    applying = true
-    try { hooks.setSave(saveFromBlob(remote.blob)) } finally { applying = false }
-    if (session) writeMeta(hooks.storage, { address: session.address, revision: remote.revision, dirty: false })
-    pending = null
-    refreshOnline()
-  })
   document.getElementById('openBoard')?.addEventListener('click', () => {
     const board = document.getElementById('board')
     if (!board) return
@@ -498,5 +388,4 @@ export function mountOnline(next: Hooks): void {
   if (value) value.dataset.on = '1'
   if (all) all.dataset.on = '1'
   refreshOnline()
-  if (readSession(next.storage)) void reconcile()
 }

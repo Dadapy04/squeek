@@ -1,6 +1,7 @@
-import { ALTERS, SCHEMA } from './schema.ts'
+import { ALTERS, RETIRE_BLOBS, SCHEMA } from './schema.ts'
+import { applyDeath, applyExtract, buyMerchant, fieldBuy, freshAccount, mendShield, replayTutorialAccount, seeTip, sellCommon, sellUnit, skipTutorial, startRun, undoRun, upgradeBag, upgradeWeapon, type Account, type LootRow, type Pick } from '../../shared/account.ts'
 import { checksumAddress, isAddress, normAddress, randomNonce, readMessageAddress, readNonce, recoverAddress, siweMessage, uriAllowed } from './siwe.ts'
-import { judgeRun, weekKey, type RunEvent } from './rules.ts'
+import { judgeRun, MIN_SECONDS, weekKey, type RunEvent } from './rules.ts'
 
 export interface Env {
   DB: D1Database
@@ -11,7 +12,6 @@ export interface Env {
 }
 
 const enc = new TextEncoder()
-const SAVE_LIMIT = 512 * 1024
 const NONCE_MS = 10 * 60 * 1000
 const SESSION_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -24,6 +24,7 @@ async function ensureSchema(db: D1Database): Promise<void> {
       for (const sql of ALTERS) {
         try { await db.prepare(sql).run() } catch { /* column already present */ }
       }
+      await db.prepare(RETIRE_BLOBS).run()
     })()
   }
   await schemaReady
@@ -203,47 +204,51 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
     return json({ address, name: name || null })
   }
 
-  if (request.method === 'GET' && path === '/v1/save') {
-    if (!address) return json({ error: 'unauthorized' }, 401)
-    const row = await env.DB.prepare('SELECT revision, updated_at, blob FROM saves WHERE address = ?').bind(address).first<{ revision: number; updated_at: number; blob: string }>()
-    if (!row) return json({ empty: true })
-    return json({ revision: row.revision, updatedAt: row.updated_at, blob: row.blob })
+  if (request.method === 'GET' && path === '/v1/save' || request.method === 'PUT' && path === '/v1/save') {
+    return json({ error: 'blob-retired' }, 410)
   }
 
-  if (request.method === 'PUT' && path === '/v1/save') {
+  if (request.method === 'GET' && path === '/v1/account') {
     if (!address) return json({ error: 'unauthorized' }, 401)
-    if (!await allow(env.DB, `save:${address}`, 30, NONCE_MS, now)) return json({ error: 'rate' }, 429)
+    const loaded = await loadAccount(env, address, now)
+    return json({ revision: loaded.revision, state: loaded.account })
+  }
+
+  if (request.method === 'POST' && path.startsWith('/v1/act/')) {
+    if (!address) return json({ error: 'unauthorized' }, 401)
+    if (!await allow(env.DB, `act:${address}`, 60, NONCE_MS, now)) return json({ error: 'rate' }, 429)
     const body = await readJson(request)
-    const blob = typeof body?.blob === 'string' ? body.blob : ''
-    const base = body?.revision == null ? null : Number(body.revision)
-    if (!blob || blob.length > SAVE_LIMIT || (base != null && !Number.isInteger(base))) return json({ error: 'blob' }, 400)
-    try {
-      const parsed = JSON.parse(blob) as unknown
-      if (!parsed || typeof parsed !== 'object') return json({ error: 'blob' }, 400)
-    } catch {
-      return json({ error: 'blob' }, 400)
-    }
-    const current = await env.DB.prepare('SELECT revision, updated_at, blob FROM saves WHERE address = ?').bind(address).first<{ revision: number; updated_at: number; blob: string }>()
-    if (!current) {
-      if (base != null && base !== 0) return json({ error: 'conflict', revision: 0, updatedAt: 0, blob: '' }, 409)
-      await env.DB.prepare('INSERT INTO saves (address, revision, updated_at, blob) VALUES (?, 1, ?, ?)').bind(address, now, blob).run()
-      return json({ revision: 1, updatedAt: now })
-    }
-    if (base !== current.revision) return json({ error: 'conflict', revision: current.revision, updatedAt: current.updated_at, blob: current.blob }, 409)
-    const revision = current.revision + 1
-    await env.DB.prepare('UPDATE saves SET revision = ?, updated_at = ?, blob = ? WHERE address = ?').bind(revision, now, blob, address).run()
-    return json({ revision, updatedAt: now })
+    const loaded = await loadAccount(env, address, now)
+    const account = loaded.account
+    const action = path.slice('/v1/act/'.length)
+    const result = runAction(account, action, body ?? {})
+    if (!result.ok) return json({ error: result.reason, state: account }, 422)
+    const revision = await storeAccount(env, address, account, now)
+    return json({ revision, state: account, ...result })
   }
 
   if (request.method === 'POST' && path === '/v1/runs/start') {
     if (!address) return json({ error: 'unauthorized' }, 401)
     if (!await allow(env.DB, `start:${address}`, 12, NONCE_MS, now)) return json({ error: 'rate' }, 429)
+    const body = await readJson(request)
+    const loaded = await loadAccount(env, address, now)
     const id = crypto.randomUUID()
+    const picks = Array.isArray(body?.picks) ? body.picks as Pick[] : []
+    const started = startRun(loaded.account, picks, body?.bringShield === true, id)
+    if (!started.ok) return json({ error: started.reason, state: loaded.account }, 422)
     const seed = crypto.getRandomValues(new Uint32Array(1))[0]! || 1
     const exp = now + 6 * 60 * 60 * 1000
     const token = await issueToken(env, { id, address, seed, iat: now, exp })
     await env.DB.prepare('INSERT INTO runs (id, address, seed, token_hash, status, issued_at) VALUES (?, ?, ?, ?, ?, ?)').bind(id, address, seed, await sha256(token), 'open', now).run()
-    return json({ runId: id, seed, token, issuedAt: now, expiresAt: exp })
+    const revision = await storeAccount(env, address, loaded.account, now)
+    return json({ runId: id, seed, token, issuedAt: now, expiresAt: exp, revision, state: loaded.account })
+  }
+
+  if (request.method === 'POST' && path === '/v1/runs/die') {
+    if (!address) return json({ error: 'unauthorized' }, 401)
+    const body = await readJson(request)
+    const closed = await closeRun(env, address, body ?? {}, now, 'die')
+    return json(closed.body, closed.status)
   }
 
   if (request.method === 'POST' && path === '/v1/runs/extract') {
@@ -264,13 +269,21 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
       elapsedMs: now - run.issued_at,
     })
     const elapsedMs = now - run.issued_at
+    const loaded = await loadAccount(env, address, now)
+    if (loaded.account.activeRun?.id !== run.id) return json({ error: 'no-run' }, 422)
     if (!verdict.ok) {
+      undoRun(loaded.account)
       await env.DB.prepare('UPDATE runs SET status = ?, reason = ?, depth = ?, value = ?, elapsed_ms = ? WHERE id = ?').bind('rejected', verdict.reason, Number(body?.depth) || null, Number(body?.value) || null, elapsedMs, run.id).run()
-      return json({ accepted: false, ranked: false, reason: verdict.reason, depth: Number(body?.depth) || null, value: Number(body?.value) || null, elapsedMs }, 422)
+      const revision = await storeAccount(env, address, loaded.account, now)
+      return json({ accepted: false, ranked: false, reason: verdict.reason, depth: Number(body?.depth) || null, value: Number(body?.value) || null, elapsedMs, revision, state: loaded.account }, 422)
     }
+    const loot: LootRow[] = events.filter((event) => event.kind === 'loot' && event.item && event.coins != null).map((event) => ({ kind: event.item!, coins: event.coins! }))
+    const applied = applyExtract(loaded.account, loot, verdict.depth)
+    if (!applied.ok) return json({ error: applied.reason, state: loaded.account }, 422)
     await env.DB.prepare('UPDATE runs SET status = ?, depth = ?, value = ?, reason = ?, elapsed_ms = ? WHERE id = ?').bind(verdict.flagged ? 'flagged' : 'accepted', verdict.depth, verdict.value, verdict.reason ?? null, elapsedMs, run.id).run()
     await env.DB.prepare('INSERT INTO scores (run_id, address, depth, value, week, created_at, flagged) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(run.id, address, verdict.depth, verdict.value, weekKey(now), now, verdict.flagged ? 1 : 0).run()
-    return json({ accepted: true, ranked: !verdict.flagged, value: verdict.value, depth: verdict.depth, flagged: verdict.flagged })
+    const revision = await storeAccount(env, address, loaded.account, now)
+    return json({ accepted: true, ranked: !verdict.flagged, value: verdict.value, depth: verdict.depth, flagged: verdict.flagged, revision, state: loaded.account })
   }
 
   if (request.method === 'GET' && path === '/v1/leaderboard') {
@@ -299,6 +312,64 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
   }
 
   return json({ error: 'not-found' }, 404)
+}
+
+async function loadAccount(env: Env, address: string, now: number): Promise<{ account: Account; revision: number }> {
+  const row = await env.DB.prepare('SELECT state, revision FROM accounts WHERE address = ?').bind(address).first<{ state: string; revision: number }>()
+  if (!row) {
+    const account = freshAccount()
+    await env.DB.prepare('INSERT INTO accounts (address, state, revision, updated_at) VALUES (?, ?, 1, ?)').bind(address, JSON.stringify(account), now).run()
+    return { account, revision: 1 }
+  }
+  return { account: JSON.parse(row.state) as Account, revision: row.revision }
+}
+
+async function storeAccount(env: Env, address: string, account: Account, now: number): Promise<number> {
+  const row = await env.DB.prepare('SELECT revision FROM accounts WHERE address = ?').bind(address).first<{ revision: number }>()
+  const revision = (row?.revision ?? 0) + 1
+  await env.DB.prepare('INSERT INTO accounts (address, state, revision, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(address) DO UPDATE SET state = excluded.state, revision = excluded.revision, updated_at = excluded.updated_at').bind(address, JSON.stringify(account), revision, now).run()
+  return revision
+}
+
+function runAction(account: Account, action: string, body: Record<string, unknown>): { ok: true } | { ok: false; reason: string } {
+  if (action === 'buy') return buyMerchant(account, String(body.kind ?? ''))
+  if (action === 'field-buy') return fieldBuy(account, String(body.kind ?? ''))
+  if (action === 'sell') return sellUnit(account, String(body.kind ?? ''), typeof body.coins === 'number' ? body.coins : undefined, typeof body.spearId === 'string' ? body.spearId : undefined)
+  if (action === 'sell-common') return sellCommon(account)
+  if (action === 'upgrade') return upgradeWeapon(account, String(body.which ?? ''))
+  if (action === 'bag') return upgradeBag(account)
+  if (action === 'workshop') return mendShield(account, String(body.mode ?? ''))
+  if (action === 'tutorial') {
+    skipTutorial(account)
+    return { ok: true }
+  }
+  if (action === 'tutorial-replay') {
+    replayTutorialAccount(account)
+    return { ok: true }
+  }
+  if (action === 'tutorial-seen') {
+    seeTip(account, String(body.id ?? ''))
+    return { ok: true }
+  }
+  return { ok: false, reason: 'action' }
+}
+
+async function closeRun(env: Env, address: string, body: Record<string, unknown>, now: number, mode: 'die'): Promise<{ status: number; body: Record<string, unknown> }> {
+  const token = typeof body.token === 'string' ? body.token : ''
+  const parsed = await readToken(env, token)
+  if (!parsed || parsed.address !== address || parsed.exp <= now) return { status: 401, body: { error: 'token' } }
+  const run = await env.DB.prepare('SELECT id, status, issued_at, token_hash FROM runs WHERE id = ? AND address = ?').bind(parsed.id, address).first<{ id: string; status: string; issued_at: number; token_hash: string }>()
+  if (!run || run.token_hash !== await sha256(token)) return { status: 401, body: { error: 'token' } }
+  if (run.status !== 'open') return { status: 409, body: { error: 'used' } }
+  const loaded = await loadAccount(env, address, now)
+  if (loaded.account.activeRun?.id !== run.id) return { status: 422, body: { error: 'no-run' } }
+  const elapsedMs = now - run.issued_at
+  const depth = Number(body.depth) || 1
+  const floor = (MIN_SECONDS[Math.min(Math.max(depth, 1), MIN_SECONDS.length - 1)] ?? 75) * 1000
+  const died = applyDeath(loaded.account, elapsedMs >= floor ? depth : 1)
+  await env.DB.prepare('UPDATE runs SET status = ?, reason = ?, depth = ?, elapsed_ms = ? WHERE id = ?').bind('dead', mode, depth, elapsedMs, run.id).run()
+  const revision = await storeAccount(env, address, loaded.account, now)
+  return { status: 200, body: { ok: died.ok, revision, state: loaded.account, depth: died.ok ? died.depth : loaded.account.depth } }
 }
 
 export default {

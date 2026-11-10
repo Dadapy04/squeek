@@ -1,16 +1,17 @@
+import { coinFits } from '../../shared/account.ts'
+
 /** Plausibility bounds. Generous enough for a real clear, tight enough to drop invented totals. */
 
 export const DEPTH_CAP = 7
 export const MAX_RUN_MS = 6 * 60 * 60 * 1000
 /** Wall-clock floor. Depth 1 is a walk to the circle plus the 3s channel, so 8s rejected real clears. */
-const MIN_SECONDS = [0, 3, 10, 18, 28, 40, 55, 75]
+export const MIN_SECONDS = [0, 3, 10, 18, 28, 40, 55, 75]
 const HARD_CAP = [0, 800, 1200, 1600, 2000, 2600, 3200, 4000]
-const COIN_MIN = 4
-const COIN_MAX = 88
 const MAX_LOOT = 48
 
 export interface RunEvent {
   kind: string
+  item?: string
   coins?: number
   depth?: number
 }
@@ -46,7 +47,8 @@ export function judgeRun(claim: RunClaim): Verdict {
     if (!event || typeof event.kind !== 'string') return { ok: false, reason: 'log' }
     if (event.kind === 'loot') {
       const coins = event.coins
-      if (typeof coins !== 'number' || !Number.isInteger(coins) || coins < COIN_MIN || coins > COIN_MAX) {
+      const item = event.item
+      if (typeof coins !== 'number' || typeof item !== 'string' || !coinFits(item, coins)) {
         return { ok: false, reason: 'coins' }
       }
       value += coins

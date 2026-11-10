@@ -17,7 +17,7 @@ import { loadExtract, writeExtract } from './save.ts'
 import { ITEM_NAME, RARITY_COLOR, RARITY_NAME, STASH_SLOTS, type CoinRarity, type ItemUnit } from './coins.ts'
 import { bladeDisplay, bossDisplay, depthPlan } from './depths.ts'
 import { currentLocale, onLocale, setLocale, t, type MsgKey } from './i18n.ts'
-import { armRun, mountOnline, noteExtract, refreshOnline, takeRunSeed } from './online.ts'
+import { armRun, mountOnline, noteDeath, noteExtract, refreshOnline, takeRunSeed, walletAct, walletLive } from './online.ts'
 import { reportFromRun } from './run-report.ts'
 import { roomAt } from './dungeon.ts'
 import { markSeen, replayTutorial, skipTutorial, tipAnchor, tipToShow, type TipId, type TutorialWorld } from './tutorial.ts'
@@ -36,6 +36,7 @@ import {
   SOUL_STAM,
   STAM_MAX,
   addSupport,
+  addUnits,
   bankRun,
   carriedCount,
   claimLoot,
@@ -198,21 +199,61 @@ async function beginDeploy(): Promise<void> {
     }
     return
   }
-  const issued = await takeRunSeed()
-  const error = deploy(save, picks.map((stack) => ({ ...stack })), bringShield, issued?.seed)
+  if (walletLive()) {
+    const issued = await takeRunSeed(picks.map((stack) => ({ kind: stack.kind, n: stack.n })), bringShield)
+    deployBtn.disabled = false
+    if (!issued?.token || !issued.carried) {
+      deployError.hidden = false
+      deployError.textContent = startRefusal(issued?.error)
+      return
+    }
+    restoreCarried(issued.carried as Parameters<typeof restoreCarried>[0])
+    save.ventures = Math.max(0, (save.ventures || 0) - 1)
+    const error = deploy(save, picks.map((stack) => ({ ...stack })), bringShield, issued.seed)
+    if (error) {
+      deployError.hidden = false
+      deployError.textContent = error
+      return
+    }
+    armRun(issued.token)
+    picks = []
+    bringShield = false
+    outcome = null
+    show('field')
+    return
+  }
+  const error = deploy(save, picks.map((stack) => ({ ...stack })), bringShield)
   if (error) {
     deployBtn.disabled = false
     deployError.hidden = false
     deployError.textContent = error
     return
   }
-  armRun(issued?.token)
   picks = []
   bringShield = false
   outcome = null
   writeExtract(storage, save)
   deployBtn.disabled = false
   show('field')
+}
+
+function startRefusal(code?: string): string {
+  if (code === 'short' || code === 'missing') return t('err.stashShort')
+  if (code === 'bag') return t('err.bagSlots', { n: bagSlotsOf(save.bagSlots) })
+  return t('online.offlineRun')
+}
+
+function restoreCarried(carried: { sword?: boolean; shield?: number | null; bag?: { kind: ItemKind; n: number; units?: ItemUnit[] }[]; spear?: ExtractSave['spear']; blade?: ExtractSave['blade']; insured?: ExtractSave['insured'] }): void {
+  if (carried.sword) {
+    const sword = save.stash.find((stack) => stack.kind === 'sword')
+    if (sword) sword.n += 1
+    else save.stash.push({ kind: 'sword', n: 1 })
+  }
+  for (const stack of carried.bag ?? []) addUnits(save.stash, stack.kind, stack.units ?? [])
+  if (carried.shield != null) save.shield = carried.shield
+  if (carried.spear) save.spear = carried.spear
+  if (carried.blade) save.blade = carried.blade
+  if (carried.insured) save.insured = carried.insured
 }
 
 document.querySelector<HTMLButtonElement>('#resume')!.addEventListener('click', () => {
@@ -351,7 +392,8 @@ document.querySelector('#tutorialReplay')?.addEventListener('click', () => {
   const next = replayTutorial()
   save.tutorialSeen = next.seen
   save.tutorialSkip = next.skip
-  writeExtract(storage, save)
+  if (walletLive()) void walletAct('/v1/act/tutorial-replay', {})
+  else writeExtract(storage, save)
   closeSettings()
   refreshTip()
 })
@@ -364,19 +406,36 @@ document.querySelector('#tipSkip')?.addEventListener('click', () => {
   const next = skipTutorial({ seen: save.tutorialSeen ?? [], skip: false })
   save.tutorialSeen = next.seen
   save.tutorialSkip = true
-  writeExtract(storage, save)
+  if (walletLive()) void walletAct('/v1/act/tutorial', {})
+  else writeExtract(storage, save)
   refreshTip()
 })
 document.querySelector('#sellCommon')?.addEventListener('click', () => rememberTip('sell'))
 document.querySelector('#buyBandage')?.addEventListener('click', () => buyFromMerchant('bandage'))
 document.querySelector('#buyP3k')?.addEventListener('click', () => buyFromMerchant('p3k'))
 document.querySelector('#sellCommon')?.addEventListener('click', () => {
+  if (walletLive()) {
+    void walletAct('/v1/act/sell-common', {}).then((result) => {
+      const note = document.querySelector('#merchantNote')
+      if (note) note.textContent = result.ok && (result.gained ?? 0) > 0 ? t('merchant.sold', { n: result.gained ?? 0 }) : t('merchant.none')
+      if (result.ok && (result.gained ?? 0) > 0) { playCue('world.sell', mixPref()); popCoins(result.gained ?? 0); renderBase() }
+    })
+    return
+  }
   const gained = sellCommon(save)
   const note = document.querySelector('#merchantNote')
   if (note) note.textContent = gained > 0 ? t('merchant.sold', { n: gained }) : t('merchant.none')
   if (gained > 0) { playCue('world.sell', mixPref()); writeExtract(storage, save); popCoins(gained); renderBase() }
 })
 function buyFromMerchant(kind: 'bandage' | 'p3k'): void {
+  if (walletLive()) {
+    void walletAct('/v1/act/buy', { kind }).then((result) => {
+      const note = document.querySelector('#merchantNote')
+      if (note) note.textContent = result.ok ? t('merchant.bought', { name: t(kind === 'bandage' ? 'item.bandage' : 'item.p3k') }) : t('shop.poor')
+      if (result.ok) { playCue('world.buy', mixPref()); renderBase() }
+    })
+    return
+  }
   const result = buyGoods(save, kind)
   const note = document.querySelector('#merchantNote')
   if (note) note.textContent = result.ok ? t('merchant.bought', { name: t(kind === 'bandage' ? 'item.bandage' : 'item.p3k') }) : result.reason
@@ -838,6 +897,19 @@ function paintWorkshop(): void {
   }
 }
 function confirmWorkshop(): void {
+  if (walletLive()) {
+    const path = upgradePick === 'bag' ? '/v1/act/bag' : upgradePick ? '/v1/act/upgrade' : '/v1/act/workshop'
+    const body = upgradePick === 'bag' ? {} : upgradePick ? { which: upgradePick } : { mode: workshopAction }
+    void walletAct(path, body).then((result) => {
+      upgradePick = null
+      workshopAction = null
+      document.querySelector<HTMLElement>('#workshopConfirm')!.hidden = true
+      const note = document.querySelector('#workshopNote')!
+      note.textContent = result.ok ? t('online.synced') : t('shop.poor')
+      if (result.ok) { playCue('world.hammer', mixPref()); renderBase(); paintWorkshop() }
+    })
+    return
+  }
   if (upgradePick === 'bag') {
     const result = upgradeBag(save)
     if (result.ok) rememberTip('bagslot')
@@ -1191,7 +1263,11 @@ function frame(now: number): void {
       let ended: 'extracted' | 'dead' | null = null
       if (clock.steps > 0) {
         const input = readInput()
-        if (input.interact && save.run) {
+        if (input.interact && save.run && walletLive()) {
+          void walletAct('/v1/act/field-buy', { kind: 'bandage' }).then((result) => {
+            if (result.ok && save.run) addUnits(save.run.bag, 'bandage', [{ coins: 8, rarity: 'biasa', origin: 'loot' }])
+          })
+        } else if (input.interact && save.run) {
           const purse = save.coins
           const note = fieldBuy(save, 'bandage')
           if (note) save.run.floats.push({ text: note, life: 1.6 })
@@ -1319,13 +1395,31 @@ function finish(kind: 'extracted' | 'dead'): void {
   const carried = save.run ? carriedRows(save.run) : []
   const gained = save.run ? freshValue(save.run) : 0
   const report = kind === 'extracted' && save.run ? reportFromRun(save.run) : null
+  const depth = save.run?.depth || 1
+  if (walletLive()) {
+    void finishWallet(kind, report, carried, gained, depth)
+    return
+  }
   if (kind === 'extracted') bankRun(save)
   else killRun(save)
   outcome = kind
   lastResult = { kind, rows: carried, gained }
   writeExtract(storage, save)
   paintResult(kind, carried, gained)
-  if (report) void noteExtract(report)
+}
+
+async function finishWallet(kind: 'extracted' | 'dead', report: ReturnType<typeof reportFromRun> | null, carried: ResultRow[], gained: number, depth: number): Promise<void> {
+  const ok = kind === 'extracted' && report ? await noteExtract(report) : await noteDeath(depth)
+  if (!ok) {
+    if (save.run) save.run.channel = 0
+    else show('base')
+    renderBase()
+    return
+  }
+  outcome = kind
+  lastResult = { kind, rows: carried, gained }
+  paintResult(kind, carried, gained)
+  renderBase()
 }
 
 function paintResult(kind: 'extracted' | 'dead', carried: ResultRow[], gained: number): void {
@@ -1633,6 +1727,7 @@ function paint(): void {
 function rememberTip(id: TipId): void {
   const next = markSeen({ seen: save.tutorialSeen ?? [], skip: save.tutorialSkip === true }, id)
   save.tutorialSeen = next.seen
+  if (walletLive()) void walletAct('/v1/act/tutorial-seen', { id }, !save.run)
 }
 
 function notePlay(run: NonNullable<ExtractSave['run']>, input: { moveX: number; moveY: number; attack: boolean; dodge: boolean; interact: boolean; block: boolean }): void {
@@ -1960,6 +2055,16 @@ function sellButtons(box: HTMLElement, kind: ItemKind, coins?: number, spearId?:
 }
 
 function commitSale(kind: ItemKind, coins?: number, spearId?: string): void {
+  if (walletLive()) {
+    void walletAct('/v1/act/sell', { kind, coins, spearId }).then((result) => {
+      sellReady = false
+      if (!result.ok) return
+      stashFocus = null
+      popCoins(result.gained ?? 0)
+      renderBase()
+    })
+    return
+  }
   const gained = sellOne(save, kind, coins, spearId)
   sellReady = false
   if (gained == null) return

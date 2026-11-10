@@ -3,6 +3,7 @@ import { onlineEnabled, phoneLayout, walletButtons } from '../src/extract/online
 import { reportFromRun } from '../src/extract/run-report.ts'
 import { decideSync, hasLocalProgress, recommendSide } from '../src/extract/sync-choice.ts'
 import { deploy, freshSave, freshValue } from '../src/extract/sim.ts'
+import { loadExtract, setPersistSuspended, writeExtract } from '../src/extract/save.ts'
 
 describe('online flag and cloud choice', () => {
   it('stays off until an API url is set', () => {
@@ -31,6 +32,23 @@ describe('online flag and cloud choice', () => {
     const cloud = { coins: 5, stash: 20, depth: 1, ventures: 1, updatedAt: 99 }
     expect(recommendSide(local, cloud)).toBe('local')
     expect(recommendSide(cloud, local)).toBe('cloud')
+    const data = new Map<string, string>()
+    const box = {
+      get length() { return data.size },
+      clear: () => data.clear(),
+      getItem: (key: string) => data.get(key) ?? null,
+      key: (index: number) => [...data.keys()][index] ?? null,
+      removeItem: (key: string) => { data.delete(key) },
+      setItem: (key: string, value: string) => { data.set(key, value) },
+    }
+    const guest = freshSave()
+    guest.coins = 77
+    writeExtract(box, guest)
+    setPersistSuspended(true)
+    guest.coins = 0
+    writeExtract(box, guest)
+    setPersistSuspended(false)
+    expect(loadExtract(box).coins).toBe(77)
     expect(hasLocalProgress(freshSave())).toBe(false)
     const played = freshSave()
     played.ventures = 1

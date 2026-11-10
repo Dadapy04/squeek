@@ -40,7 +40,7 @@ Create the tables:
 npx wrangler d1 migrations apply squeek --remote
 ```
 
-Confirm with `y` when it asks. This only creates empty tables. It does not upload anyone’s save.
+Confirm with `y` when it asks. `0001_init.sql` creates the tables. `0002_elapsed.sql` adds the run timer column. `0003_accounts.sql` creates the wallet account table and deletes every old blob save. A wallet account then starts as a new player. Guest saves on a device are not in this database and are not touched.
 
 ## 4. Set the run secret
 
@@ -141,9 +141,9 @@ Open http://127.0.0.1:47331 . On the base screen you should see Connect wallet. 
 
 - Guest play never talks to the server. The save stays in the browser under the same key as before.
 - Connect wallet asks for a signature only. There is no transaction, no token approval, and no chain switch from the game. The signature proves the address.
-- Disconnect forgets the session in this browser. It does not delete the local save.
-- Cloud save uploads the same save blob. If the phone and the laptop both changed, the game keeps the copy on this device and asks before replacing it.
-- A ranked clear needs a run token from the server at the start. The server checks the time, the loot log, and coin caps. A failed check does not delete the local extract. It only refuses the rank board.
+- Disconnect forgets the session and puts the untouched guest save back. Connecting does not upload that guest save.
+- A wallet account lives on the server and starts at zero: coins, stash, bag, and workshop levels. The server checks every sale, purchase, upgrade, and delve. The browser does not upload a save blob for a wallet.
+- A ranked clear needs a run token from the server at the start. The server checks the time, the loot log, and coin bands. A failed check restores the loadout and refuses the rank board. Head out while signed in and offline stays on the base.
 - The board has best haul and deepest floor, for this week and for all time. Flagged runs are stored and are not shown.
 
 ## If something fails
@@ -165,4 +165,4 @@ From the `server` folder, with Node 22:
 npm test
 ```
 
-That signs a test key, checks the signature, rejects an impossibly fast clear, and checks that an old cloud revision cannot overwrite a newer save.
+That signs a test key, checks the signature, rejects an impossibly fast clear, a replayed token, and a forged loot coin, and checks that a wallet blob upload is refused.

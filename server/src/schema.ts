@@ -13,6 +13,12 @@ export const SCHEMA = [
     address TEXT PRIMARY KEY,
     name TEXT
   )`,
+  `CREATE TABLE IF NOT EXISTS accounts (
+    address TEXT PRIMARY KEY,
+    state TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS saves (
     address TEXT PRIMARY KEY,
     revision INTEGER NOT NULL,
@@ -51,3 +57,6 @@ export const SCHEMA = [
 export const ALTERS = [
   `ALTER TABLE runs ADD COLUMN elapsed_ms INTEGER`,
 ]
+
+/** Old client blobs are retired. Wallet profiles start empty in `accounts`. */
+export const RETIRE_BLOBS = `DELETE FROM saves`

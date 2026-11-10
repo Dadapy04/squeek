@@ -36,7 +36,15 @@ export function loadExtract(storage: Storage | null): ExtractSave {
   return freshSave()
 }
 
+let persistSuspended = false
+
+/** While a wallet profile is in memory, guest localStorage must stay untouched. */
+export function setPersistSuspended(on: boolean): void {
+  persistSuspended = on
+}
+
 export function writeExtract(storage: Storage | null, save: ExtractSave): boolean {
+  if (persistSuspended) return true
   if (!storage) return false
   let payload = ''
   try {

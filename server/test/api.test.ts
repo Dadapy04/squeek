@@ -47,13 +47,13 @@ describe('worker endpoints', () => {
     const token = await login()
     const auth = { authorization: `Bearer ${token}`, 'content-type': 'application/json' }
     const first = await json('/v1/save', { method: 'PUT', headers: auth, body: JSON.stringify({ revision: null, blob: '{"coins":3}' }) })
-    expect(first.status).toBe(200)
-    expect(first.body.revision).toBe(1)
-    const clash = await json('/v1/save', { method: 'PUT', headers: auth, body: JSON.stringify({ revision: 0, blob: '{"coins":9}' }) })
-    expect(clash.status).toBe(409)
-    expect(clash.body.blob).toBe('{"coins":3}')
-    const got = await json('/v1/save', { headers: auth })
-    expect(got.body.blob).toBe('{"coins":3}')
+    expect(first.status).toBe(410)
+    const account = await json('/v1/account', { headers: auth })
+    expect(account.status).toBe(200)
+    expect((account.body.state as { coins: number }).coins).toBe(0)
+    const poor = await json('/v1/act/buy', { method: 'POST', headers: auth, body: JSON.stringify({ kind: 'bandage' }) })
+    expect(poor.status).toBe(422)
+    expect(poor.body.error).toBe('poor')
     const me = await json('/v1/me', { headers: auth })
     expect(me.body.address).toBe(address)
   })
@@ -74,12 +74,15 @@ describe('worker endpoints', () => {
         events: [
           { kind: 'depth', depth: 1 }, { kind: 'depth', depth: 2 }, { kind: 'depth', depth: 3 },
           { kind: 'depth', depth: 4 }, { kind: 'depth', depth: 5 }, { kind: 'depth', depth: 6 },
-          { kind: 'depth', depth: 7 }, { kind: 'loot', coins: 8 }, { kind: 'extract', depth: 7 },
+          { kind: 'depth', depth: 7 }, { kind: 'loot', item: 'scrap', coins: 8 }, { kind: 'extract', depth: 7 },
         ],
       }),
     })
     expect(tooFast.status).toBe(422)
     expect(tooFast.body.reason).toBe('too-fast')
+    const replayed = await json('/v1/runs/extract', { method: 'POST', headers: auth, body: JSON.stringify({ token: runToken, depth: 1, value: 88, events: [{ kind: 'loot', item: 'scrap', coins: 88 }, { kind: 'extract', depth: 1 }] }) })
+    expect(replayed.status).toBe(409)
+    expect(replayed.body.error).toBe('used')
 
     const again = await json('/v1/runs/start', { method: 'POST', headers: auth, body: '{}' })
     const goodToken = String(again.body.token)
@@ -92,7 +95,7 @@ describe('worker endpoints', () => {
         token: goodToken,
         depth: 1,
         value: 20,
-        events: [{ kind: 'depth', depth: 1 }, { kind: 'loot', coins: 8 }, { kind: 'loot', coins: 12 }, { kind: 'extract', depth: 1 }],
+        events: [{ kind: 'depth', depth: 1 }, { kind: 'loot', item: 'scrap', coins: 8 }, { kind: 'loot', item: 'scrap', coins: 12 }, { kind: 'extract', depth: 1 }],
       }),
     })
     expect(ranked.status).toBe(200)
@@ -108,6 +111,22 @@ describe('worker endpoints', () => {
     const rows = board.body.rows as { address: string; value: number }[]
     expect(rows.some((row) => row.address === address && row.value === 20)).toBe(true)
 
+    const forgedStart = await json('/v1/runs/start', { method: 'POST', headers: auth, body: '{}' })
+    const forgedWait = 3_200 - (Date.now() - Number(forgedStart.body.issuedAt))
+    if (forgedWait > 0) await new Promise((resolve) => setTimeout(resolve, forgedWait))
+    const forged = await json('/v1/runs/extract', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        token: forgedStart.body.token,
+        depth: 1,
+        value: 88,
+        events: [{ kind: 'loot', item: 'scrap', coins: 88 }, { kind: 'extract', depth: 1 }],
+      }),
+    })
+    expect(forged.status).toBe(422)
+    expect(forged.body.reason).toBe('coins')
+
     const richStart = await json('/v1/runs/start', { method: 'POST', headers: auth, body: '{}' })
     const richWait = 9_000 - (Date.now() - Number(richStart.body.issuedAt))
     if (richWait > 0) await new Promise((resolve) => setTimeout(resolve, richWait + 50))
@@ -119,7 +138,7 @@ describe('worker endpoints', () => {
         token: richStart.body.token,
         depth: 1,
         value: 700,
-        events: [{ kind: 'depth', depth: 1 }, ...coins.map((coin) => ({ kind: 'loot', coins: coin })), { kind: 'extract', depth: 1 }],
+        events: [{ kind: 'depth', depth: 1 }, ...coins.map((coin) => ({ kind: 'loot', item: 'bilah', coins: coin })), { kind: 'extract', depth: 1 }],
       }),
     })
     expect(flagged.body.ranked).toBe(false)
@@ -128,8 +147,8 @@ describe('worker endpoints', () => {
     expect(values).toEqual([20])
   })
 
-  it('refuses a leaderboard post with no session', async () => {
+  it('rejects a blob upload even with no session', async () => {
     const denied = await json('/v1/save', { method: 'PUT', body: JSON.stringify({ blob: '{}' }) })
-    expect(denied.status).toBe(401)
+    expect(denied.status).toBe(410)
   })
 })
