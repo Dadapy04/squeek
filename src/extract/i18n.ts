@@ -128,6 +128,8 @@ export const DICT = {
   'online.updating': { id: 'Server sedang diperbarui. Tetap sebagai tamu sebentar.', en: 'The server is updating. Stay as guest for a few minutes.' },
   'online.noWallet': { id: 'Tidak ada dompet di peramban ini.', en: 'No wallet in this browser.' },
   'online.guest': { id: 'Tamu', en: 'Guest' },
+  'online.toastOn': { id: 'Wallet terhubung', en: 'Wallet connected' },
+  'online.toastOff': { id: 'Wallet terputus', en: 'Wallet disconnected' },
   'online.who': { id: 'Dompet {name}', en: 'Wallet {name}' },
   'online.ranks': { id: 'Papan peringkat', en: 'Ranks' },
   'online.best': { id: 'Nilai terbaik', en: 'Best haul' },

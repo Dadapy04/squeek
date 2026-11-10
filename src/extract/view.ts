@@ -1,4 +1,5 @@
 import { cameraScale } from './camera.ts'
+import { drawNameTag, measureTag, nameTag, placeNameTag } from './name-tag.ts'
 import { chromaOffset, letterDrift, noteSoulTitle, titleAlpha, titleAnchor, titleGlyph, titleJitter, titlePixel, titleScale, TITLE_LINE } from './soul-title.ts'
 import { blit, cableRun, debrisSprite, lampHousing, lootIcon, machineSprite, pipeRun, rockRim } from './patterns.ts'
 import { drawHero, drawMaw, drawWing } from './pose.ts'
@@ -288,6 +289,16 @@ export function drawExtract(
       const a = run.age * 3 + i
       ctx.fillRect(Math.round(hero.x + Math.cos(a) * (8 + i) * scale), Math.round(hero.y - 16 * scale + Math.sin(a) * 6 * scale), Math.max(1, scale), Math.max(1, scale))
     }
+  }
+  const label = nameTag()
+  if (label) {
+    const size = measureTag(ctx, label)
+    const foes = run.foes.filter((foe) => foe.hp > 0 && foe.zone === run.zone).map((foe) => {
+      const spot = at(foe.x, foe.y)
+      return { x: spot.x, y: spot.y - 16 * scale, r: 18 * scale }
+    })
+    const box = placeNameTag({ headTop: hero.y - 38 * scale, centerX: hero.x }, size, foes, { w: width, h: height })
+    drawNameTag(ctx, box, label)
   }
   ctx.globalAlpha = 1
   ctx.restore()

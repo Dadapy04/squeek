@@ -146,6 +146,58 @@ button { cursor: pointer; }
     calc(16px + env(safe-area-inset-left, 0px));
 }
 #base h2 { margin: 10px 0 6px; font-size: 16px; color: #f6ecd8; }
+.account-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  margin: 0 0 6px;
+  padding: 2px 6px;
+  font-size: 13px;
+  line-height: 1.15;
+  color: #8d8478;
+  background: #16130f;
+  border: 2px solid #3a3228;
+  box-shadow: 2px 2px 0 #14110e;
+}
+#bars .account-badge { margin: 0; max-width: 46vw; }
+.account-badge[data-state="in"] { color: #f6ecd8; }
+.account-badge b { font-weight: 700; }
+.account-badge .addr { color: #a89880; }
+.account-badge .dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  background: #6a645c;
+  box-shadow: 1px 1px 0 #14110e;
+}
+.account-badge[data-state="in"] .dot { background: #3dba6a; }
+#basePortrait {
+  display: block;
+  width: 160px;
+  height: 100px;
+  margin: 0 0 4px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+#accountToast {
+  position: fixed;
+  z-index: 40;
+  left: 50%;
+  bottom: calc(78px + var(--safe-b));
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 6px 10px;
+  max-width: calc(100% - 24px);
+  background: #1c1814;
+  color: #f6ecd8;
+  border: 2px solid #c4a15a;
+  box-shadow: 2px 2px 0 #14110e;
+  font-size: 13px;
+  line-height: 1.2;
+  pointer-events: none;
+  text-align: center;
+}
 #carryHint { margin: 8px 0 0; line-height: 1.35; }
 #loadout { display: block; }
 #result {

@@ -1,4 +1,5 @@
 import { apiUrl, onlineEnabled, phoneLayout, walletButtons, walletConnectId } from './online-flag.ts'
+import { nameTagLabel, paintBasePortrait, setNameTag, shortAddress } from './name-tag.ts'
 import type { RunReport } from './run-report.ts'
 import { EXTRACT_SAVE_KEY, loadExtract, setPersistSuspended } from './save.ts'
 import { t } from './i18n.ts'
@@ -42,10 +43,6 @@ export function walletLive(): boolean {
   return guestBlob != null && hooks != null && readSession(hooks.storage) != null
 }
 
-function shortAddress(address: string): string {
-  return `${address.slice(0, 6)}…${address.slice(-4)}`
-}
-
 function setText(id: string, text: string): void {
   const el = document.getElementById(id)
   if (el) el.textContent = text
@@ -54,18 +51,62 @@ function setText(id: string, text: string): void {
 export function refreshOnline(): void {
   if (!onlineEnabled() || !hooks) return
   const session = readSession(hooks.storage)
-  if (!session) {
+  if (!session || !walletLive()) {
     setText('onlineStatus', t('online.guest'))
     setText('onlineStatusRun', t('online.guest'))
     setText('cloudStatus', t('online.device'))
+    paintAccountBadge(null, null)
     paintWalletChrome()
     return
   }
-  const label = session.name || shortAddress(session.address)
+  const label = nameTagLabel(session.name, session.address)
   setText('onlineStatus', t('online.who', { name: label }))
   setText('onlineStatusRun', t('online.who', { name: label }))
-  setText('cloudStatus', walletLive() ? t('online.synced') : t('online.device'))
+  setText('cloudStatus', t('online.synced'))
+  paintAccountBadge(session.address, session.name)
   paintWalletChrome()
+}
+
+function paintAccountBadge(address: string | null, name: string | null): void {
+  const live = address != null
+  const nick = (name ?? '').trim()
+  const addr = live ? shortAddress(address) : ''
+  setNameTag(live ? nameTagLabel(name, address) : null)
+  paintBasePortrait(live ? nameTagLabel(name, address) : null)
+  for (const id of ['accountBadge', 'accountBadgeBase']) {
+    const badge = document.getElementById(id)
+    if (!badge) continue
+    badge.dataset.state = live ? 'in' : 'out'
+    badge.replaceChildren()
+    const dot = document.createElement('i')
+    dot.className = 'dot'
+    dot.setAttribute('aria-hidden', 'true')
+    badge.append(dot)
+    if (!live) {
+      badge.append(document.createTextNode(t('online.guest')))
+      continue
+    }
+    if (nick) {
+      const strong = document.createElement('b')
+      strong.textContent = nick.slice(0, 16)
+      badge.append(strong)
+    }
+    const tail = document.createElement('span')
+    tail.className = 'addr'
+    tail.textContent = addr
+    badge.append(tail)
+  }
+}
+
+let toastTimer = 0
+
+export function showAccountToast(text: string): void {
+  const toast = document.getElementById('accountToast')
+  if (!toast) return
+  toast.textContent = text
+  toast.hidden = false
+  window.clearTimeout(toastTimer)
+  toastTimer = window.setTimeout(() => { toast.hidden = true }, 2200)
 }
 
 async function api(path: string, init: RequestInit = {}, auth = true): Promise<Response> {
@@ -167,6 +208,7 @@ async function signIn(provider: Eip1193): Promise<void> {
   const name = document.getElementById('walletName') as HTMLInputElement | null
   if (name) name.value = session.name ?? ''
   refreshOnline()
+  showAccountToast(t('online.toastOn'))
 }
 
 async function connectInjected(): Promise<void> {
@@ -222,6 +264,7 @@ async function disconnect(): Promise<void> {
   writeSession(hooks.storage, null)
   if (kept != null) hooks.setSave(saveFromBlob(kept || '{}'))
   refreshOnline()
+  showAccountToast(t('online.toastOff'))
 }
 
 async function saveName(): Promise<void> {
