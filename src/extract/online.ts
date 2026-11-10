@@ -327,7 +327,9 @@ async function connectWalletConnect(): Promise<void> {
   }
   try {
     const mod = await import('@walletconnect/ethereum-provider')
-    const origin = typeof location !== 'undefined' ? location.origin : 'https://dadapy04.github.io'
+    const here = typeof location !== 'undefined'
+    const origin = here ? location.origin : 'https://squeekextract.xyz'
+    const icon = `${origin}${here && location.pathname.startsWith('/squeek') ? '/squeek/favicon.svg' : '/favicon.svg'}`
     const provider = await mod.EthereumProvider.init({
       projectId,
       optionalChains: [1],
@@ -339,7 +341,7 @@ async function connectWalletConnect(): Promise<void> {
         name: 'Squeek',
         description: 'Squeek extraction survival',
         url: origin,
-        icons: [`${origin}/squeek/favicon.svg`],
+        icons: [icon],
       },
     })
     watchProvider(provider)
@@ -397,7 +399,9 @@ async function probeWalletConnect(): Promise<void> {
   const projectId = walletConnectId()
   if (!projectId || !hooks) return
   const mod = await import('@walletconnect/ethereum-provider')
-  const origin = typeof location !== 'undefined' ? location.origin : 'https://dadapy04.github.io'
+  const here = typeof location !== 'undefined'
+  const origin = here ? location.origin : 'https://squeekextract.xyz'
+  const icon = `${origin}${here && location.pathname.startsWith('/squeek') ? '/squeek/favicon.svg' : '/favicon.svg'}`
   const provider = await mod.EthereumProvider.init({
     projectId,
     optionalChains: [1],
@@ -409,7 +413,7 @@ async function probeWalletConnect(): Promise<void> {
       name: 'Squeek',
       description: 'Squeek extraction survival',
       url: origin,
-      icons: [`${origin}/squeek/favicon.svg`],
+      icons: [icon],
     },
   })
   watchProvider(provider)

@@ -23,6 +23,8 @@ export function checksumAddress(value: string): string {
   return out
 }
 
+const LEGACY_HOST = 'dadapy04.github.io'
+
 export function uriAllowed(uri: string, domain: string): boolean {
   try {
     const url = new URL(uri)
@@ -32,6 +34,37 @@ export function uriAllowed(uri: string, domain: string): boolean {
   } catch {
     return false
   }
+}
+
+/** Apex, www, and the old GitHub Pages host. Local hosts only when the worker itself is local. */
+export function hostAllowed(host: string, primary: string): boolean {
+  if (host === primary) return true
+  const bare = host.replace(/:\d+$/, '')
+  const primaryBare = primary.replace(/:\d+$/, '')
+  if (primaryBare === 'localhost' || primaryBare === '127.0.0.1') {
+    return bare === 'localhost' || bare === '127.0.0.1'
+  }
+  if (bare === 'squeekextract.xyz' || bare === 'www.squeekextract.xyz') return true
+  if (bare === LEGACY_HOST) return true
+  return false
+}
+
+/** Use the page the browser is on when that host is allowed. Otherwise the configured site. */
+export function signInTarget(requested: string, primary: string, fallbackUri: string): { domain: string; uri: string } {
+  try {
+    const url = new URL(requested)
+    if (hostAllowed(url.host, primary) && uriAllowed(requested, url.host)) return { domain: url.host, uri: requested }
+  } catch { /* fall through */ }
+  return { domain: primary, uri: fallbackUri }
+}
+
+/** The signed message domain must be the URI host, and that host must be one we still serve. */
+export function signInMessageOk(message: string, primary: string): boolean {
+  const domain = /^(\S+) wants you to sign in with your Ethereum account:$/m.exec(message)?.[1]
+  const uri = /^URI: (\S+)$/m.exec(message)?.[1]
+  if (!domain || !uri) return false
+  if (!hostAllowed(domain, primary)) return false
+  return uriAllowed(uri, domain)
 }
 
 export function siweMessage(input: {

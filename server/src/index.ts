@@ -1,7 +1,7 @@
 import { boardSql, personalBestSql } from './board.ts'
 import { ALTERS, RETIRE_BLOBS, SCHEMA } from './schema.ts'
 import { applyDeath, applyExtract, buyMerchant, chooseWeapon, fieldBuy, freshAccount, mendShield, replayTutorialAccount, seeTip, sellCommon, sellUnit, settleOneWeapon, skipTutorial, startRun, undoRun, upgradeBag, upgradeWeapon, type Account, type LootRow, type Pick } from '../../shared/account.ts'
-import { checksumAddress, isAddress, normAddress, randomNonce, readMessageAddress, readNonce, recoverAddress, siweMessage, uriAllowed } from './siwe.ts'
+import { checksumAddress, isAddress, normAddress, randomNonce, readMessageAddress, readNonce, recoverAddress, signInMessageOk, signInTarget, siweMessage } from './siwe.ts'
 import { judgeRun, MIN_SECONDS, weekKey, type RunEvent } from './rules.ts'
 
 export interface Env {
@@ -152,9 +152,9 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
     const chainRaw = Number(body?.chainId)
     const chainId = Number.isInteger(chainRaw) && chainRaw > 0 && chainRaw < 1_000_000 ? chainRaw : 1
     const requested = typeof body?.uri === 'string' ? body.uri : ''
-    const uri = uriAllowed(requested, env.SIWE_DOMAIN) ? requested : env.SIWE_URI
+    const site = signInTarget(requested, env.SIWE_DOMAIN, env.SIWE_URI)
     await env.DB.prepare('INSERT INTO nonces (nonce, address, expires_at) VALUES (?, ?, ?)').bind(nonce, id, now + NONCE_MS).run()
-    const message = siweMessage({ domain: env.SIWE_DOMAIN, address: checksumAddress(id), uri, nonce, issuedAt, expirationTime, chainId })
+    const message = siweMessage({ domain: site.domain, address: checksumAddress(id), uri: site.uri, nonce, issuedAt, expirationTime, chainId })
     return json({ nonce, message, issuedAt, expirationTime })
   }
 
@@ -164,7 +164,7 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
     const signature = typeof body?.signature === 'string' ? body.signature : ''
     const nonce = readNonce(message)
     const claimed = readMessageAddress(message)
-    if (!nonce || !claimed || !message.includes(env.SIWE_DOMAIN) || !message.includes(env.SIWE_URI)) return json({ error: 'message' }, 400)
+    if (!nonce || !claimed || !signInMessageOk(message, env.SIWE_DOMAIN)) return json({ error: 'message' }, 400)
     if (!await allow(env.DB, `verify:${claimed}`, 12, NONCE_MS, now)) return json({ error: 'rate' }, 429)
     const row = await env.DB.prepare('SELECT address, expires_at FROM nonces WHERE nonce = ?').bind(nonce).first<{ address: string; expires_at: number }>()
     if (!row || row.expires_at <= now || row.address !== claimed) return json({ error: 'nonce' }, 401)

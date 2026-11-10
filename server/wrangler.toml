@@ -11,10 +11,10 @@ database_id = "21def8b0-69c6-499d-8e04-3ec4c64346ed"
 migrations_dir = "migrations"
 
 [vars]
-SIWE_DOMAIN = "dadapy04.github.io"
-SIWE_URI = "https://dadapy04.github.io/squeek"
-# Comma-separated. Local vite is included so a laptop can sign in before Pages is pointed at the worker.
-CORS_ORIGIN = "https://dadapy04.github.io,http://127.0.0.1:47331,http://localhost:47331"
+SIWE_DOMAIN = "squeekextract.xyz"
+SIWE_URI = "https://squeekextract.xyz"
+# Comma-separated. The old Pages host stays for the cutover. Local vite is included so a laptop can sign in.
+CORS_ORIGIN = "https://squeekextract.xyz,https://www.squeekextract.xyz,https://dadapy04.github.io,http://127.0.0.1:47331,http://localhost:47331"
 
 # RUN_SECRET is not here. Set it with `wrangler secret put RUN_SECRET`.
 # Local tests and `wrangler dev` read server/.dev.vars (see .dev.vars.example).

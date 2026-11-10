@@ -64,9 +64,9 @@ Edit `.dev.vars` if you want. Do not commit that file.
 
 In `server/wrangler.toml`:
 
-- `SIWE_DOMAIN` is `dadapy04.github.io` (no `https://`).
-- `SIWE_URI` is `https://dadapy04.github.io/squeek`.
-- `CORS_ORIGIN` lists the Pages site and the local game (`http://127.0.0.1:47331`).
+- `SIWE_DOMAIN` is `squeekextract.xyz` (no `https://`).
+- `SIWE_URI` is `https://squeekextract.xyz`.
+- `CORS_ORIGIN` lists `https://squeekextract.xyz`, `https://www.squeekextract.xyz`, the old Pages origin `https://dadapy04.github.io`, and the local game (`http://127.0.0.1:47331`).
 
 If the public site later moves, change those three and deploy again. The signed-in message must show the same domain the player is looking at, or the signature check fails.
 
@@ -100,9 +100,9 @@ Injected wallets (MetaMask, Rabby, Bitget in a desktop browser) do not need this
 
 1. Open https://cloud.walletconnect.com and create a free account.
 2. Create a project. Copy the project id.
-3. In the project settings, allow the origin `https://dadapy04.github.io`.
+3. In the project settings, allow the origins `https://squeekextract.xyz` and `https://dadapy04.github.io`.
 
-The public `.env.production` already contains the project id `cb0884d85fa7d8ca7c9ed90ac2cc4fe5`. The Reown allowlist for that project is `https://dadapy04.github.io`. A new id, if you ever replace it, goes in `.env.production` as `VITE_WALLETCONNECT_PROJECT_ID`.
+The public `.env.production` already contains the project id `cb0884d85fa7d8ca7c9ed90ac2cc4fe5`. The Reown allowlist for that project needs `https://squeekextract.xyz` and `https://dadapy04.github.io`. A new id, if you ever replace it, goes in `.env.production` as `VITE_WALLETCONNECT_PROJECT_ID`.
 
 ## 8. Point the game at the API
 
@@ -122,7 +122,7 @@ VITE_WALLETCONNECT_PROJECT_ID=
 
 Put the WalletConnect id on the second line if you have one. No quotes. No slash at the end of the API address.
 
-`.env.local` is not committed. The public site build reads the committed `.env.production`, which sets `VITE_API_URL` to `https://squeek-api.dadapy04.workers.dev` and `VITE_WALLETCONNECT_PROJECT_ID` to the public Reown project id. Phones open WalletConnect and jump into a wallet app. Desktop browsers without an extension get the QR code. Guest play still works if you never connect. The Reown allowlist for that project is `https://dadapy04.github.io`.
+`.env.local` is not committed. The public site build reads the committed `.env.production`, which sets `VITE_API_URL` to `https://squeek-api.dadapy04.workers.dev` and `VITE_WALLETCONNECT_PROJECT_ID` to the public Reown project id. Phones open WalletConnect and jump into a wallet app. Desktop browsers without an extension get the QR code. Guest play still works if you never connect. The Reown allowlist for that project needs `https://squeekextract.xyz` and `https://dadapy04.github.io`.
 
 To try it on your laptop:
 

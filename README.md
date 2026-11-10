@@ -81,9 +81,9 @@ Guest saves stay in the browser under `npcs-burrow-pixel-extract.save.v1`. The a
 
 ## Live
 
-[https://dadapy04.github.io/squeek/](https://dadapy04.github.io/squeek/)
+[https://squeekextract.xyz/](https://squeekextract.xyz/)
 
-Press images: [og.png](https://dadapy04.github.io/squeek/press/og.png) (1200×630) and [headline.png](https://dadapy04.github.io/squeek/press/headline.png) (1280×720).
+Press images: [og.png](https://squeekextract.xyz/press/og.png) (1200×630) and [headline.png](https://squeekextract.xyz/press/headline.png) (1280×720).
 
 ## Credits
 
