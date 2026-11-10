@@ -11,10 +11,10 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <meta name="theme-color" content="#1a140f" />
     <title>Squeek: Extraction Survival</title>
-    <script type="module" crossorigin src="./assets/main-B8A9vSD1.js"></script>
+    <script type="module" crossorigin src="./assets/main-BL2JIaBK.js"></script>
     <link rel="modulepreload" crossorigin href="./assets/modulepreload-polyfill-P2Xu9kJm.js">
     <link rel="modulepreload" crossorigin href="./assets/wheel-BKW0ZpM6.js">
-    <link rel="stylesheet" crossorigin href="./assets/main-J9WBuMEM.css">
+    <link rel="stylesheet" crossorigin href="./assets/main-BIdfJyiz.css">
   </head>
   <body data-drive="normal" class="title">
     <div id="bootSplash" role="status">Squeek</div>
@@ -169,6 +169,7 @@
             </div>
             <p class="tip" data-i18n="settings.tip">For a full screen on iPhone: Share → Add to Home Screen.</p>
             <button id="fullToggle" type="button" data-i18n="title.full">Full screen</button>
+            <button id="tutorialReplay" type="button" data-i18n="settings.tutorial">Replay tutorial</button>
             <button id="surrender" class="danger" type="button" data-i18n="settings.giveUp">Give up</button>
           </div>
           <footer class="modal-foot">
@@ -199,6 +200,11 @@
         </div>
       </div>
     </section>
+    <div id="tip" hidden>
+      <p id="tipText"></p>
+      <button id="tipX" type="button" aria-label="Close">✕</button>
+      <button id="tipSkip" type="button" data-i18n="tip.skip">Skip tutorial</button>
+    </div>
     <section id="result" hidden>
       <div id="resultPanel">
         <div id="resultSummary">
