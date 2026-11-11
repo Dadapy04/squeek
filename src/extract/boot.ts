@@ -703,7 +703,7 @@ function fillBagDetail(run: NonNullable<ExtractSave['run']>, detail: HTMLElement
   }
   if (pick.worn && run.spear) {
     const color = RARITY_COLOR[run.spear.rarity]
-    text.innerHTML = `<b>${spearLabel(run.spear)}</b><br><span style="color:${color}">${RARITY_NAME[run.spear.rarity]} · ${run.spear.coins ?? 0} ${t('coin.word')}</span><br>${spearStatLine(run.spear)} ${t('bag.worn')}`
+    text.replaceChildren(bold(spearLabel(run.spear)), document.createElement('br'), colored(`${RARITY_NAME[run.spear.rarity]} · ${run.spear.coins ?? 0} ${t('coin.word')}`, color), document.createElement('br'), document.createTextNode(`${spearStatLine(run.spear)} ${t('bag.worn')}`))
     drop1.hidden = true
     dropAll.hidden = true
     use.hidden = true
@@ -720,7 +720,7 @@ function fillBagDetail(run: NonNullable<ExtractSave['run']>, detail: HTMLElement
   const tier = rarity ? `${RARITY_NAME[rarity]} · ${coins} ${t('coin.word')}` : t('bag.noCoins')
   const extra = spear ? spearStatLine(spear) : bagUse(pick.kind)
   const home = units.some((unit) => unit.origin === 'stash') ? ` ${t('bag.fromStash')}` : ''
-  text.innerHTML = `<b>${full}</b><br><span style="color:${color}">${tier}</span> ×${n}.${home}<br>${extra}`
+  text.replaceChildren(bold(full), document.createElement('br'), colored(tier, color), document.createTextNode(` ×${n}.${home}`), document.createElement('br'), document.createTextNode(extra))
   drop1.hidden = false
   dropAll.hidden = n < 2
   use.hidden = pick.kind !== 'bandage' && pick.kind !== 'tonic' && pick.kind !== 'p3k'
@@ -736,7 +736,8 @@ function fillBagDetail(run: NonNullable<ExtractSave['run']>, detail: HTMLElement
   if (!insure) return
   if (pick.bladeId) {
     const held = (run.foundBlades ?? []).find((item) => item.id === pick.bladeId)
-    text.innerHTML = held ? `<b>${bladeDisplay(held.id, held.name)}</b><br><span style="color:${held.rarity === 'legenda' ? '#f2c04a' : '#b388ff'}">${RARITY_NAME[held.rarity]} · ${t('blade.power', { n: held.damage })} · ${held.coins} ${t('coin.word')}</span><br>${t('bag.foundBlade')}` : t('bag.missingBlade')
+    if (!held) text.textContent = t('bag.missingBlade')
+    else text.replaceChildren(bold(bladeDisplay(held.id, held.name)), document.createElement('br'), colored(`${RARITY_NAME[held.rarity]} · ${t('blade.power', { n: held.damage })} · ${held.coins} ${t('coin.word')}`, held.rarity === 'legenda' ? '#f2c04a' : '#b388ff'), document.createElement('br'), document.createTextNode(t('bag.foundBlade')))
     drop1.hidden = true
     dropAll.hidden = true
     use.hidden = true
@@ -758,7 +759,7 @@ function fillBagDetail(run: NonNullable<ExtractSave['run']>, detail: HTMLElement
     const coins = held.blade?.coins ?? held.spear?.coins ?? held.unit?.coins ?? 0
     const color = rarity ? RARITY_COLOR[rarity] : '#c4b8a4'
     const name = held.blade ? `${bladeDisplay(held.blade.id, held.blade.name)} · ${t('blade.power', { n: held.blade.damage })}` : held.spear ? spearLabel(held.spear) : ITEM_NAME[held.kind]
-    text.innerHTML = `<b>${name}</b><br><span style="color:${color}">${rarity ? `${RARITY_NAME[rarity]} · ` : ''}${coins} ${t('coin.word')}</span><br>${t('bag.box')}`
+    text.replaceChildren(bold(name), document.createElement('br'), colored(`${rarity ? `${RARITY_NAME[rarity]} · ` : ''}${coins} ${t('coin.word')}`, color), document.createElement('br'), document.createTextNode(t('bag.box')))
     drop1.hidden = true
     dropAll.hidden = true
     use.hidden = true
@@ -2061,7 +2062,7 @@ function stashDetail(): HTMLElement {
     const coins = held.spear?.coins ?? held.unit?.coins ?? 0
     const color = rarity ? RARITY_COLOR[rarity] : '#c4b8a4'
     const name = held.spear ? spearLabel(held.spear) : ITEM_NAME[held.kind]
-    box.innerHTML = `<b>${name}</b><p class="insure-note">${t('stash.box')}</p><p style="color:${color}">${rarity ? RARITY_NAME[rarity] : ''} · ${coins} ${t('coin.word')}</p>`
+    box.replaceChildren(bold(name), noteP(t('stash.box'), 'insure-note'), noteP(`${rarity ? `${RARITY_NAME[rarity]} · ` : ''}${coins} ${t('coin.word')}`, '', color))
     const out = stashButton(t('bag.uninsure'), () => {
       const reason = uninsureStash(save)
       if (reason) box.append(noteLine(reason))
@@ -2075,11 +2076,11 @@ function stashDetail(): HTMLElement {
     return box
   }
   if (focus.shield) {
-    box.innerHTML = `<b>${t('item.shield')}</b><p>${save.shield == null ? t('stash.noShield') : t('stash.shield', { n: save.shield, max: shieldMaxFor(save.shieldLevel) })}</p>`
+    box.replaceChildren(bold(t('item.shield')), noteP(save.shield == null ? t('stash.noShield') : t('stash.shield', { n: save.shield, max: shieldMaxFor(save.shieldLevel) })))
     return box
   }
   if (focus.bladeId && save.blade?.id === focus.bladeId) {
-    box.innerHTML = `<b>${bladeDisplay(save.blade.id, save.blade.name)}</b><p>${t('blade.power', { n: save.blade.damage })}</p>`
+    box.replaceChildren(bold(bladeDisplay(save.blade.id, save.blade.name)), noteP(t('blade.power', { n: save.blade.damage })))
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'primary stash-press'
@@ -2101,7 +2102,7 @@ function stashDetail(): HTMLElement {
     }
     const worn = save.spear?.id === spear.id
     const color = RARITY_COLOR[spear.rarity]
-    box.innerHTML = `<b>${spearLabel(spear)}</b><p style="color:${color}">${RARITY_NAME[spear.rarity]} · ${spear.coins ?? 0} ${t('coin.word')}</p><p>${spearStatLine(spear)}</p>`
+    box.replaceChildren(bold(spearLabel(spear)), noteP(`${RARITY_NAME[spear.rarity]} · ${spear.coins ?? 0} ${t('coin.word')}`, '', color), noteP(spearStatLine(spear)))
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'primary stash-press'
@@ -2122,8 +2123,9 @@ function stashDetail(): HTMLElement {
   }
   const color = unit ? RARITY_COLOR[unit.rarity] : '#c4b8a4'
   const priced = unit && focus.kind !== 'sword'
-  const price = priced && unit ? `<p style="color:${color}">${RARITY_NAME[unit.rarity]} · ${unit.coins} ${t('coin.word')}</p>` : ''
-  box.innerHTML = `<b>${name}</b>${price}<p>${bagUse(focus.kind)}</p>`
+  box.replaceChildren(bold(name))
+  if (priced && unit) box.append(noteP(`${RARITY_NAME[unit.rarity]} · ${unit.coins} ${t('coin.word')}`, '', color))
+  box.append(noteP(bagUse(focus.kind)))
   const actions = document.createElement('div')
   actions.className = 'inv-actions'
   if (focus.kind === 'sword') {
@@ -2163,6 +2165,27 @@ function noteLine(text: string): HTMLElement {
   p.className = 'warn'
   p.textContent = text
   return p
+}
+
+function bold(text: string): HTMLElement {
+  const el = document.createElement('b')
+  el.textContent = text
+  return el
+}
+
+function colored(text: string, color: string): HTMLElement {
+  const el = document.createElement('span')
+  el.textContent = text
+  el.style.color = color
+  return el
+}
+
+function noteP(text: string, className = '', color = ''): HTMLElement {
+  const el = document.createElement('p')
+  if (className) el.className = className
+  if (color) el.style.color = color
+  el.textContent = text
+  return el
 }
 
 function markStashPress(button: HTMLButtonElement): void {
@@ -2293,7 +2316,7 @@ function sellButtons(kind: ItemKind, coins?: number, spearId?: string, rarity?: 
 
 function saleConfirm(box: HTMLElement, title: string, kind: ItemKind, coins?: number, spearId?: string, rarity?: CoinRarity): void {
   const name = kind === 'tombak' ? title : ITEM_NAME[kind]
-  box.innerHTML = `<b>${name}</b>`
+  box.replaceChildren(bold(name))
   const ask = document.createElement('p')
   ask.id = 'sellAsk'
   ask.textContent = t('stash.sellAsk', { name, rarity: rarity ? RARITY_NAME[rarity] : '', coins: coins ?? 0 })

@@ -60,6 +60,8 @@ export function judgeRun(claim: RunClaim): Verdict {
     } else if (event.kind === 'extract') {
       if (event.depth !== depth) return { ok: false, reason: 'depth' }
       sawExtract = true
+    } else if (event.kind === 'kill') {
+      if (event.item != null && typeof event.item !== 'string') return { ok: false, reason: 'log' }
     } else {
       return { ok: false, reason: 'log' }
     }
@@ -74,6 +76,10 @@ export function judgeRun(claim: RunClaim): Verdict {
     ? { ok: true, value, depth, flagged: true, reason: 'suspicious' }
     : { ok: true, value, depth, flagged: false }
 }
+
+/** A person can clear a lot in a day. A script cannot clear hundreds. */
+export const DAY_RUN_CAP = 40
+export const DAY_COIN_CAP = 24000
 
 export function weekKey(now: number): string {
   const date = new Date(now)

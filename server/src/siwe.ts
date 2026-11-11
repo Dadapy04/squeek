@@ -23,8 +23,6 @@ export function checksumAddress(value: string): string {
   return out
 }
 
-const LEGACY_HOST = 'dadapy04.github.io'
-
 export function uriAllowed(uri: string, domain: string): boolean {
   try {
     const url = new URL(uri)
@@ -36,7 +34,7 @@ export function uriAllowed(uri: string, domain: string): boolean {
   }
 }
 
-/** Apex, www, and the old GitHub Pages host. Local hosts only when the worker itself is local. */
+/** Apex and www. Local hosts only when the worker itself is local. */
 export function hostAllowed(host: string, primary: string): boolean {
   if (host === primary) return true
   const bare = host.replace(/:\d+$/, '')
@@ -45,7 +43,6 @@ export function hostAllowed(host: string, primary: string): boolean {
     return bare === 'localhost' || bare === '127.0.0.1'
   }
   if (bare === 'squeekextract.xyz' || bare === 'www.squeekextract.xyz') return true
-  if (bare === LEGACY_HOST) return true
   return false
 }
 

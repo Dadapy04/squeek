@@ -51,6 +51,7 @@ export const SCHEMA = [
     reset_at INTEGER NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS scores_board ON scores (flagged, week, value DESC, depth DESC)`,
+  `CREATE INDEX IF NOT EXISTS nonces_exp ON nonces (expires_at)`,
 ]
 
 /** Added after the first deploy. Duplicate-column errors are ignored by the worker. */

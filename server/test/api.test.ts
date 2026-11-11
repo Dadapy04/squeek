@@ -162,6 +162,38 @@ describe('worker endpoints', () => {
     expect(again.body.abandoned).toBe(false)
   })
 
+  it('rejects an oversized body and a forged loot log', async () => {
+    const huge = await json('/v1/auth/nonce', { method: 'POST', body: JSON.stringify({ address, pad: 'x'.repeat(9000) }) })
+    expect(huge.status).toBe(413)
+    const blocked = await worker.fetch('http://localhost/v1/health', { headers: { origin: 'https://dadapy04.github.io' } })
+    expect(blocked.headers.get('access-control-allow-origin')).toBeNull()
+    const token = await login()
+    const auth = { authorization: `Bearer ${token}`, 'content-type': 'application/json' }
+    const started = await json('/v1/runs/start', { method: 'POST', headers: auth, body: '{}' })
+    expect(started.status).toBe(200)
+    const wait = 3_200 - (Date.now() - Number(started.body.issuedAt))
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait))
+    const loot = Array.from({ length: 21 }, () => ({ kind: 'loot', item: 'scrap', coins: 8 }))
+    const forged = await json('/v1/runs/extract', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        token: started.body.token,
+        depth: 1,
+        value: 168,
+        events: [{ kind: 'depth', depth: 1 }, ...loot, { kind: 'extract', depth: 1 }],
+      }),
+    })
+    expect(forged.status).toBe(422)
+    expect(forged.body.reason).toBe('log')
+    const again = await json('/v1/runs/extract', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ token: started.body.token, depth: 1, value: 8, events: [{ kind: 'depth', depth: 1 }, { kind: 'loot', item: 'scrap', coins: 8 }, { kind: 'extract', depth: 1 }] }),
+    })
+    expect(again.status).toBe(409)
+  })
+
   it('rejects a blob upload even with no session', async () => {
     const denied = await json('/v1/save', { method: 'PUT', body: JSON.stringify({ blob: '{}' }) })
     expect(denied.status).toBe(410)

@@ -2,7 +2,8 @@ import { boardSql, personalBestSql } from './board.ts'
 import { ALTERS, RETIRE_BLOBS, SCHEMA } from './schema.ts'
 import { applyDeath, applyExtract, buyMerchant, chooseWeapon, fieldBuy, freshAccount, mendShield, replayTutorialAccount, seeTip, sellCommon, sellUnit, settleOneWeapon, skipTutorial, staleDelve, startRun, undoRun, upgradeBag, upgradeWeapon, type Account, type LootRow, type Pick } from '../../shared/account.ts'
 import { checksumAddress, isAddress, normAddress, randomNonce, readMessageAddress, readNonce, recoverAddress, signInMessageOk, signInTarget, siweMessage } from './siwe.ts'
-import { judgeRun, MIN_SECONDS, weekKey, type RunEvent } from './rules.ts'
+import { runBudget } from './budget.ts'
+import { DAY_COIN_CAP, DAY_RUN_CAP, judgeRun, MIN_SECONDS, weekKey, type RunEvent } from './rules.ts'
 
 export interface Env {
   DB: D1Database
@@ -78,24 +79,52 @@ function fromB64url(value: string): string {
   return atob(value.replaceAll('-', '+').replaceAll('_', '/') + pad)
 }
 
-async function allow(db: D1Database, key: string, limit: number, windowMs: number, now: number): Promise<boolean> {
-  const row = await db.prepare('SELECT count, reset_at FROM limits WHERE key = ?').bind(key).first<{ count: number; reset_at: number }>()
-  if (!row || row.reset_at <= now) {
-    await db.prepare('INSERT INTO limits (key, count, reset_at) VALUES (?, 1, ?) ON CONFLICT(key) DO UPDATE SET count = 1, reset_at = excluded.reset_at').bind(key, now + windowMs).run()
-    return true
-  }
-  if (row.count >= limit) return false
-  await db.prepare('UPDATE limits SET count = count + 1 WHERE key = ?').bind(key).run()
-  return true
+export class PayloadTooLarge extends Error {}
+
+/** One statement. A full window does not increment. */
+export async function allow(db: D1Database, key: string, limit: number, windowMs: number, now: number, add = 1): Promise<boolean> {
+  const reset = now + windowMs
+  const result = await db.prepare(`
+    INSERT INTO limits (key, count, reset_at) VALUES (?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET
+      count = CASE WHEN limits.reset_at <= ? THEN excluded.count ELSE limits.count + excluded.count END,
+      reset_at = CASE WHEN limits.reset_at <= ? THEN excluded.reset_at ELSE limits.reset_at END
+    WHERE CASE WHEN limits.reset_at <= ? THEN 0 ELSE limits.count END + ? <= ?
+  `).bind(key, add, reset, now, now, now, add, limit).run()
+  return (result.meta?.changes ?? 0) > 0
 }
 
-async function readJson(request: Request): Promise<Record<string, unknown> | null> {
+function bodyCap(path: string): number {
+  return path.startsWith('/v1/auth') ? 8 * 1024 : 32 * 1024
+}
+
+async function readJson(request: Request, path: string): Promise<Record<string, unknown> | null> {
+  const cap = bodyCap(path)
+  const claimed = Number(request.headers.get('content-length') || 0)
+  if (Number.isFinite(claimed) && claimed > cap) throw new PayloadTooLarge()
+  const text = await request.text()
+  if (text.length > cap) throw new PayloadTooLarge()
+  if (!text) return null
   try {
-    const body = await request.json() as unknown
+    const body = JSON.parse(text) as unknown
     return body && typeof body === 'object' ? body as Record<string, unknown> : null
   } catch {
     return null
   }
+}
+
+async function claimOpen(env: Env, id: string): Promise<boolean> {
+  const result = await env.DB.prepare(`UPDATE runs SET status = 'closing' WHERE id = ? AND status = 'open'`).bind(id).run()
+  return (result.meta?.changes ?? 0) > 0
+}
+
+function utcDay(now: number): string {
+  return new Date(now).toISOString().slice(0, 10)
+}
+
+function untilTomorrow(now: number): number {
+  const date = new Date(now)
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1) - now
 }
 
 async function sessionAddress(request: Request, env: Env, now: number): Promise<string | null> {
@@ -141,11 +170,14 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
   if (request.method === 'GET' && path === '/v1/health') return json({ ok: true })
 
   if (request.method === 'POST' && path === '/v1/auth/nonce') {
-    const body = await readJson(request)
+    const body = await readJson(request, path)
     const address = typeof body?.address === 'string' ? body.address : ''
     if (!isAddress(address)) return json({ error: 'address' }, 400)
     const id = normAddress(address)
+    const ip = clientIp(request)
+    if (!await allow(env.DB, `ip:nonce:${ip}`, 30, NONCE_MS, now)) return json({ error: 'rate' }, 429)
     if (!await allow(env.DB, `nonce:${id}`, 8, NONCE_MS, now)) return json({ error: 'rate' }, 429)
+    await env.DB.prepare('DELETE FROM nonces WHERE expires_at <= ?').bind(now).run()
     const nonce = randomNonce()
     const issuedAt = new Date(now).toISOString()
     const expirationTime = new Date(now + NONCE_MS).toISOString()
@@ -159,12 +191,13 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
   }
 
   if (request.method === 'POST' && path === '/v1/auth/verify') {
-    const body = await readJson(request)
+    const body = await readJson(request, path)
     const message = typeof body?.message === 'string' ? body.message : ''
     const signature = typeof body?.signature === 'string' ? body.signature : ''
     const nonce = readNonce(message)
     const claimed = readMessageAddress(message)
     if (!nonce || !claimed || !signInMessageOk(message, env.SIWE_DOMAIN)) return json({ error: 'message' }, 400)
+    if (!await allow(env.DB, `ip:verify:${clientIp(request)}`, 40, NONCE_MS, now)) return json({ error: 'rate' }, 429)
     if (!await allow(env.DB, `verify:${claimed}`, 12, NONCE_MS, now)) return json({ error: 'rate' }, 429)
     const row = await env.DB.prepare('SELECT address, expires_at FROM nonces WHERE nonce = ?').bind(nonce).first<{ address: string; expires_at: number }>()
     if (!row || row.expires_at <= now || row.address !== claimed) return json({ error: 'nonce' }, 401)
@@ -197,7 +230,7 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
 
   if (request.method === 'PUT' && path === '/v1/profile') {
     if (!address) return json({ error: 'unauthorized' }, 401)
-    const body = await readJson(request)
+    const body = await readJson(request, path)
     const name = typeof body?.name === 'string' ? body.name.trim() : ''
     if (name && !/^[A-Za-z0-9 ]{3,16}$/.test(name)) return json({ error: 'name' }, 400)
     if (!name) await env.DB.prepare('DELETE FROM profiles WHERE address = ?').bind(address).run()
@@ -219,7 +252,7 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
   if (request.method === 'POST' && path.startsWith('/v1/act/')) {
     if (!address) return json({ error: 'unauthorized' }, 401)
     if (!await allow(env.DB, `act:${address}`, 60, NONCE_MS, now)) return json({ error: 'rate' }, 429)
-    const body = await readJson(request)
+    const body = await readJson(request, path)
     const loaded = await loadAccount(env, address, now)
     const account = loaded.account
     const open = await env.DB.prepare(`SELECT issued_at FROM runs WHERE address = ? AND status = 'open' ORDER BY issued_at DESC LIMIT 1`).bind(address).first<{ issued_at: number }>()
@@ -237,8 +270,9 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
   if (request.method === 'POST' && path === '/v1/runs/start') {
     if (!address) return json({ error: 'unauthorized' }, 401)
     if (!await allow(env.DB, `start:${address}`, 12, NONCE_MS, now)) return json({ error: 'rate' }, 429)
-    const body = await readJson(request)
+    const body = await readJson(request, path)
     const loaded = await loadAccount(env, address, now)
+    if (!await allow(env.DB, `dayrun:${address}:${utcDay(now)}`, DAY_RUN_CAP, untilTomorrow(now), now)) return json({ error: 'day' }, 429)
     const settled = await abandonOpenRuns(env, address, loaded.account, now)
     const abandoned = settled.abandoned
     const id = crypto.randomUUID()
@@ -255,7 +289,7 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
 
   if (request.method === 'POST' && path === '/v1/runs/die') {
     if (!address) return json({ error: 'unauthorized' }, 401)
-    const body = await readJson(request)
+    const body = await readJson(request, path)
     const closed = await closeRun(env, address, body ?? {}, now, 'die')
     return json(closed.body, closed.status)
   }
@@ -263,23 +297,42 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
   if (request.method === 'POST' && path === '/v1/runs/extract') {
     if (!address) return json({ error: 'unauthorized' }, 401)
     if (!await allow(env.DB, `extract:${address}`, 12, NONCE_MS, now)) return json({ error: 'rate' }, 429)
-    const body = await readJson(request)
+    const body = await readJson(request, path)
     const token = typeof body?.token === 'string' ? body.token : ''
     const parsed = await readToken(env, token)
     if (!parsed || parsed.address !== address || parsed.exp <= now) return json({ error: 'token' }, 401)
     const run = await env.DB.prepare('SELECT id, status, issued_at, token_hash FROM runs WHERE id = ? AND address = ?').bind(parsed.id, address).first<{ id: string; status: string; issued_at: number; token_hash: string }>()
     if (!run || run.token_hash !== await sha256(token)) return json({ error: 'token' }, 401)
-    if (run.status !== 'open') return json({ error: 'used', status: run.status }, 409)
+    if (!await claimOpen(env, run.id)) return json({ error: 'used', status: run.status }, 409)
     const events = Array.isArray(body?.events) ? body.events as RunEvent[] : []
-    const verdict = judgeRun({
+    let verdict = judgeRun({
       depth: Number(body?.depth),
       value: Number(body?.value),
       events,
       elapsedMs: now - run.issued_at,
     })
+    if (verdict.ok) {
+      const budget = runBudget(run.seed, verdict.depth)
+      let loot = 0
+      let kills = 0
+      for (const event of events) {
+        if (event.kind === 'loot') loot += 1
+        if (event.kind === 'kill') {
+          kills += 1
+          if (event.item && !budget.foeIds.has(event.item)) verdict = { ok: false, reason: 'log' }
+        }
+        if (event.kind === 'loot' && event.item && budget.sourceIds.size > 0 && typeof (event as { source?: unknown }).source === 'string' && !budget.sourceIds.has((event as { source: string }).source)) {
+          verdict = { ok: false, reason: 'log' }
+        }
+      }
+      if (verdict.ok && (loot > budget.maxLoot || kills > budget.maxKills)) verdict = { ok: false, reason: 'log' }
+    }
     const elapsedMs = now - run.issued_at
     const loaded = await loadAccount(env, address, now)
-    if (loaded.account.activeRun?.id !== run.id) return json({ error: 'no-run' }, 422)
+    if (loaded.account.activeRun?.id !== run.id) {
+      await env.DB.prepare(`UPDATE runs SET status = 'rejected', reason = 'no-run' WHERE id = ?`).bind(run.id).run()
+      return json({ error: 'no-run' }, 422)
+    }
     if (!verdict.ok) {
       undoRun(loaded.account)
       await env.DB.prepare('UPDATE runs SET status = ?, reason = ?, depth = ?, value = ?, elapsed_ms = ? WHERE id = ?').bind('rejected', verdict.reason, Number(body?.depth) || null, Number(body?.value) || null, elapsedMs, run.id).run()
@@ -294,13 +347,15 @@ async function route(request: Request, env: Env, now: number): Promise<Response>
       const revision = await storeAccount(env, address, loaded.account, now)
       return json({ accepted: false, ranked: false, reason: applied.reason, error: applied.reason, depth: verdict.depth, value: verdict.value, elapsedMs, revision, state: loaded.account }, 422)
     }
-    await env.DB.prepare('UPDATE runs SET status = ?, depth = ?, value = ?, reason = ?, elapsed_ms = ? WHERE id = ?').bind(verdict.flagged ? 'flagged' : 'accepted', verdict.depth, verdict.value, verdict.reason ?? null, elapsedMs, run.id).run()
-    await env.DB.prepare('INSERT INTO scores (run_id, address, depth, value, week, created_at, flagged) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(run.id, address, verdict.depth, verdict.value, weekKey(now), now, verdict.flagged ? 1 : 0).run()
+    const underDay = await allow(env.DB, `daycoin:${address}:${utcDay(now)}`, DAY_COIN_CAP, untilTomorrow(now), now, verdict.value)
+    const flagged = verdict.flagged || !underDay
+    await env.DB.prepare('UPDATE runs SET status = ?, depth = ?, value = ?, reason = ?, elapsed_ms = ? WHERE id = ?').bind(flagged ? 'flagged' : 'accepted', verdict.depth, verdict.value, flagged && !verdict.flagged ? 'day' : (verdict.reason ?? null), elapsedMs, run.id).run()
+    await env.DB.prepare('INSERT INTO scores (run_id, address, depth, value, week, created_at, flagged) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(run.id, address, verdict.depth, verdict.value, weekKey(now), now, flagged ? 1 : 0).run()
     const best = await env.DB.prepare(personalBestSql()).bind(address).first<{ run_id: string; value: number; depth: number }>()
     const revision = await storeAccount(env, address, loaded.account, now)
     return json({
       accepted: true,
-      ranked: !verdict.flagged,
+      ranked: !flagged,
       record: best?.run_id === run.id,
       bestValue: best?.value ?? verdict.value,
       value: verdict.value,
@@ -401,8 +456,8 @@ async function closeRun(env: Env, address: string, body: Record<string, unknown>
   const parsed = await readToken(env, token)
   if (!parsed || parsed.address !== address || parsed.exp <= now) return { status: 401, body: { error: 'token' } }
   const run = await env.DB.prepare('SELECT id, status, issued_at, token_hash FROM runs WHERE id = ? AND address = ?').bind(parsed.id, address).first<{ id: string; status: string; issued_at: number; token_hash: string }>()
-  if (!run || run.token_hash !== await sha256(token)) return { status: 401, body: { error: 'token' } }
-  if (run.status !== 'open') return { status: 409, body: { error: 'used' } }
+    if (!run || run.token_hash !== await sha256(token)) return { status: 401, body: { error: 'token' } }
+  if (!await claimOpen(env, run.id)) return { status: 409, body: { error: 'used' } }
   const loaded = await loadAccount(env, address, now)
   if (loaded.account.activeRun?.id !== run.id) return { status: 422, body: { error: 'no-run' } }
   const elapsedMs = now - run.issued_at
@@ -421,7 +476,8 @@ export default {
       await ensureSchema(env.DB)
       const now = Date.now()
       return withCors(request, env, await route(request, env, now))
-    } catch {
+    } catch (error) {
+      if (error instanceof PayloadTooLarge) return withCors(request, env, json({ error: 'too-large' }, 413))
       schemaReady = null
       return withCors(request, env, json({ error: 'server' }, 500))
     }
